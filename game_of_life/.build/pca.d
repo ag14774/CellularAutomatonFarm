@@ -1,0 +1,4 @@
+.\.build/@@@@C@@@@/Users/Admin.TROY/Desktop/xtime/_l_i2c/src/i2c_master.xc.o: ./src/main.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_async.xc
+.\.build/@@@@C@@@@/Users/Admin.TROY/Desktop/xtime/_l_i2c/src/i2c_master_async.xc.o: ./src/main.xc
+.\.build/@@@@C@@@@/Users/Admin.TROY/Desktop/xtime/_l_i2c/src/i2c_slave.xc.o: ./src/main.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_async.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_single_port.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_ext.xc
+.\.build/@@@@C@@@@/Users/Admin.TROY/Desktop/xtime/_l_xassert/src/xassert.xc.o: C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_async.xc C:/Users/Admin.TROY/Desktop/xtime/lib_i2c/src/i2c_master_single_port.xc
