@@ -10,22 +10,32 @@
 
 typedef unsigned char uchar;
 
-int roundUpToChar(int n){
-  size_t szc = sizeof(char);
-  return ((n + scz - 1) / scz) * scz;
+int roundUpToChar(int HEIGHT, int WIDTH){
+  size_t szc = sizeof(uchar)*8;
+  int numOfBits = HEIGHT * WIDTH;
+  return (numOfBits + szc -1) / szc ;
+  //return ((n + szc - 1) / szc) * szc;
 }
 
+/*
+void nullifyExtraBits(){
+
+}
+*/
+
 void setBit(uchar A[], int r, int c, int WIDTH){
+  size_t szc = sizeof(uchar)*8;
   int bit = (r*WIDTH)+c;
-  int realR = bit/sizeof(uchar);
-  int realC = bit%sizeof(uchar);
+  int realR = bit/szc;
+  int realC = bit%szc;
   A[realR] |= 1 << realC;
 }
 
 void clearBit(uchar A[], int r, int c, int WIDTH){
+  size_t szc = sizeof(uchar)*8;
   int bit = (r*WIDTH)+c;
-  int realR = bit/sizeof(uchar);
-  int realC = bit%sizeof(uchar);
+  int realR = bit/szc;
+  int realC = bit%szc;
   A[realR] &= ~(1 << realC);
 }
 
@@ -38,11 +48,11 @@ void changeBit(uchar A[], int r, int c, int changeTo, int WIDTH){
 }
 
 int getBit(uchar A[], int r, int c, int WIDTH){
+  size_t szc = sizeof(uchar)*8;
   int bit = (r*WIDTH)+c;
-  int realR = bit/sizeof(uchar);
-  int realC = bit%sizeof(uchar);
-  int bit = (A[realR] >> realC) & 1;
-  return bit;
+  int realR = bit/szc;
+  int realC = bit%szc;
+  return (A[realR] >> realC) & 1;
 }
 
 

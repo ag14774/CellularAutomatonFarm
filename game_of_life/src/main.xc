@@ -6,11 +6,12 @@
 #include <stdio.h>
 #include "pgmIO.h"
 #include "i2c.h"
+#include "bitArray.h"
 
 #define  IMHT 16                  //image height
 #define  IMWD 16                  //image width
 
-typedef unsigned char uchar;      //using uchar as shorthand
+//typedef unsigned char uchar;      //using uchar as shorthand
 
 port p_scl = XS1_PORT_1E;         //interface ports to accelerometer
 port p_sda = XS1_PORT_1F;
@@ -79,10 +80,12 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc)
   //Read in and do something with your image values..
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
+  uchar testArray[32];
   printf( "Processing...\n" );
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
     for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
       c_in :> val;                    //read the pixel value
+      changeBit(testArray, y, x, val, IMWD);
       c_out <: (uchar)( val ^ 0xFF ); //send some modified pixel out
     }
   }

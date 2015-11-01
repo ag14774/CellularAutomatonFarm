@@ -7,10 +7,13 @@
 <fDef name="accelerometer" global="true" noreturn="true" doNotSpecialize="false" numParams="2"/>
 <fDef name="ack_read_request" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="ack_write_request" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
+<fDef name="changeBit" global="true" noreturn="false" doNotSpecialize="false" numParams="5"/>
+<fDef name="clearBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="delay_microseconds" global="true" noreturn="false" doNotSpecialize="true" numParams="1"/>
 <fDef name="delay_milliseconds" global="true" noreturn="false" doNotSpecialize="true" numParams="1"/>
 <fDef name="delay_seconds" global="true" noreturn="false" doNotSpecialize="true" numParams="1"/>
 <fDef name="distributor" global="true" noreturn="false" doNotSpecialize="false" numParams="3"/>
+<fDef name="getBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="get_read_data" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="get_write_result" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="1"/>
 <fDef name="main" global="true" noreturn="false" doNotSpecialize="false" numParams="0"/>
@@ -23,8 +26,10 @@
 <fDef name="read_reg16" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="true" numParams="4"/>
 <fDef name="read_reg16_addr8" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="true" numParams="4"/>
 <fDef name="read_reg8_addr16" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="true" numParams="4"/>
+<fDef name="roundUpToChar" global="true" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="send_stop_bit" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="send_stop_bit" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
+<fDef name="setBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="shutdown" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="shutdown" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="shutdown" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
@@ -441,6 +446,50 @@
     </values>
   </arg>
 </fCall>
+<fCall name="setBit" global="true" numArgs="4">
+  <arg num="0">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="1">
+    <passThroughArg param="1" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+  <arg num="2">
+    <passThroughArg param="2" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+  <arg num="3">
+    <passThroughArg param="4" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+</fCall>
+<fCall name="clearBit" global="true" numArgs="4">
+  <arg num="0">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="1">
+    <passThroughArg param="1" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+  <arg num="2">
+    <passThroughArg param="2" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+  <arg num="3">
+    <passThroughArg param="4" caller="changeBit" global="true"/>
+    <values>
+    </values>
+  </arg>
+</fCall>
 <fCall name="printf" global="true" numArgs="1">
   <arg num="0">
     <values>
@@ -545,6 +594,33 @@
   <arg num="0">
     <values>
       <value type="unknown"/>
+    </values>
+  </arg>
+</fCall>
+<fCall name="changeBit" global="true" numArgs="5">
+  <arg num="0">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="1">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="2">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="3">
+    <values>
+      <value type="unknown"/>
+    </values>
+  </arg>
+  <arg num="4">
+    <values>
+      <value type="intval"><intval isSigned="true" val="16"/></value>
     </values>
   </arg>
 </fCall>
