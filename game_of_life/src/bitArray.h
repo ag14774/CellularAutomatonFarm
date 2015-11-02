@@ -55,5 +55,4 @@ uchar getBit(uchar A[], int r, int c, int WIDTH){
   return (A[realR] >> realC) & 1;
 }
 
-
 #endif /* BITARRAY_H_ */
