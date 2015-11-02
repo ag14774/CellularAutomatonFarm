@@ -88,6 +88,18 @@
   <endOfSeqCalledFunction>printf</endOfSeqCalledFunction>
 </task>
 <task>
+  <name>sendLineTo</name>
+  <inFunction>sendLineTo</inFunction>
+</task>
+<task>
+  <name>receiveLineFrom</name>
+  <inFunction>receiveLineFrom</inFunction>
+</task>
+<task>
+  <name>workerThread</name>
+  <inFunction>workerThread</inFunction>
+</task>
+<task>
   <name>DataOutStream</name>
   <inFunction>DataOutStream</inFunction>
 </task>
@@ -157,15 +169,15 @@
 </connection>
 <connection>
   <ends>
-    <end task="_task_DataInStream_2" type="chan"/>
-    <end task="_task_distributor_4" type="chan"/>
+    <end task="_task_DataInStream_2" type="schan"/>
+    <end task="_task_distributor_4" type="schan"/>
   </ends>
   <name>c_inIO</name>
 </connection>
 <connection>
   <ends>
-    <end task="_task_DataOutStream_3" type="chan"/>
-    <end task="_task_distributor_4" type="chan"/>
+    <end task="_task_DataOutStream_3" type="schan"/>
+    <end task="_task_distributor_4" type="schan"/>
   </ends>
   <name>c_outIO</name>
 </connection>

@@ -39,7 +39,7 @@ void clearBit(uchar A[], int r, int c, int WIDTH){
   A[realR] &= ~(1 << realC);
 }
 
-void changeBit(uchar A[], int r, int c, int changeTo, int WIDTH){
+void changeBit(uchar A[], int r, int c, uchar changeTo, int WIDTH){
   if(changeTo){
     setBit(A, r, c, WIDTH);
   } else {
@@ -47,7 +47,7 @@ void changeBit(uchar A[], int r, int c, int changeTo, int WIDTH){
   }
 }
 
-int getBit(uchar A[], int r, int c, int WIDTH){
+uchar getBit(uchar A[], int r, int c, int WIDTH){
   size_t szc = sizeof(uchar)*8;
   int bit = (r*WIDTH)+c;
   int realR = bit/szc;

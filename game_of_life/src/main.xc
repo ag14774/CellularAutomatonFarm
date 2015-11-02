@@ -32,7 +32,7 @@ port p_sda = XS1_PORT_1F;
 // Read Image from PGM file from path infname[] to channel c_out
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataInStream(char infname[], chanend c_out)
+void DataInStream(char infname[], streaming chanend c_out)
 {
   int res;
   uchar line[ IMWD ];
@@ -68,8 +68,7 @@ void DataInStream(char infname[], chanend c_out)
 // Currently the function just inverts the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void distributor(chanend c_in, chanend c_out, chanend fromAcc)
-{
+void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAcc) {
   uchar val;
 
   //Starting up and wait for tilting of the xCore-200 Explorer
@@ -80,8 +79,8 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc)
   //Read in and do something with your image values..
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
-  uchar testArray[32];
   printf( "Processing...\n" );
+  uchar testArray[(IMHT*IMWD + 8 - 1) / 8];
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
     for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
       c_in :> val;                    //read the pixel value
@@ -92,12 +91,78 @@ void distributor(chanend c_in, chanend c_out, chanend fromAcc)
   printf( "\nOne processing round completed...\n" );
 }
 
+//TO BE MOVED TO HEADER FILE
+void sendLineTo(streaming chanend to, uchar A[], int line, int size){
+  for(int i=0;i<size;i++){
+    to <: getBit(A, line, i, size);
+  }
+}
+
+void receiveLineFrom(streaming chanend from, uchar A[], int line, int size){
+  uchar a;
+  for(int i=0;i<size;i++){
+    from :> a;
+    changeBit(A, line, i, a, size);
+  }
+}
+//-------------------------------
+
+void workerThread(int id, streaming chanend from_Dist, streaming chanend up,
+                  streaming chanend down, const int numberOfLines, /*const int width,*/
+                  static const int sizeOfArray){
+
+  uchar A[sizeOfArray];
+  uchar ghostUp[(IMWD + 8 - 1) / 8];
+  uchar ghostDown[(IMWD + 8 - 1) / 8];
+  //Receive Lines
+  for(int i=0;i<numberOfLines;i++){
+    receiveLineFrom(from_Dist, A, i, IMWD);
+  }
+
+  //Send ghost rows
+  uint8_t eventA = 0;
+  uint8_t eventB = 0;
+  do {
+    select {
+      case up :> uchar a: //remember to send soemthing irrelevant at the beginning
+        receiveLineFrom(up, ghostUp, 0, IMWD);
+        eventA = 1;
+        break;
+      default:
+        if(!eventB){
+          down <: 1;
+          sendLineTo(down, A, numberOfLines-1, IMWD);
+          eventB = 1;
+        }
+        break;
+    }
+  } while(!eventA || !eventB);
+  eventA = 0; eventB = 0;
+  do {
+    select {
+      case down :> uchar a: //remember to send soemthing irrelevant at the beginning
+        receiveLineFrom(down, ghostDown, 0, IMWD);
+        eventA = 1;
+        break;
+      default:
+        if(!eventB){
+          up <: 1;
+          sendLineTo(up, A, 0, IMWD);
+          eventB = 1;
+        }
+        break;
+    }
+  } while(!eventA || !eventB);
+  //--------------------------------
+
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////
 //
 // Write pixel stream from channel c_in to PGM image file
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataOutStream(char outfname[], chanend c_in)
+void DataOutStream(char outfname[], streaming chanend c_in)
 {
   int res;
   uchar line[ IMWD ];
@@ -178,7 +243,8 @@ int main(void) {
 
   char infname[] = "test.pgm";     //put your input image path here
   char outfname[] = "testout.pgm"; //put your output image path here
-  chan c_inIO, c_outIO, c_control;    //extend your channel definitions here
+  chan c_control;
+  streaming chan c_inIO, c_outIO;       //extend your channel definitions here
 
   par {
     i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing accelerometer data
