@@ -32,8 +32,7 @@ port p_sda = XS1_PORT_1F;
 // Read Image from PGM file from path infname[] to channel c_out
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataInStream(char infname[], streaming chanend c_out)
-{
+void DataInStream(char infname[], streaming chanend c_out){
   int res;
   uchar line[ IMWD ];
   printf( "DataInStream: Start...\n" );
@@ -122,6 +121,7 @@ void workerThread(int id, streaming chanend from_Dist, streaming chanend up,
   //Send ghost rows
   uint8_t eventA = 0;
   uint8_t eventB = 0;
+  //REFACTOR!!!
   do {
     select {
       case up :> uchar a: //remember to send soemthing irrelevant at the beginning
@@ -155,6 +155,35 @@ void workerThread(int id, streaming chanend from_Dist, streaming chanend up,
   } while(!eventA || !eventB);
   //--------------------------------
 
+
+}
+
+int countAliveNeighbors(uchar A[], uchar ghostUp[], uchar ghostDown[], int width, int height, int r, int c){
+  int topLeftX = r - 1;
+  int topLeftY = c - 1;
+  int botRightX = r + 1;
+  int botRightY = c + 1;
+  int res = 0;
+  uchar itself = getBit(A, r, c, width);
+  for(int x = topLeftX ; x<=botRightX ; x++){
+    for(int y = topLeftY ; y<=botRightY ; y++){
+      res += getBitWithGhosts(A, ghostUp, ghostDown, width, height, r, c);
+    }
+  }
+  return res - itself;
+}
+
+uchar getBitWithGhosts(uchar A[], uchar ghostUp[], uchar ghostDown[],
+                       int width, int height, int r, int c){
+  if(c==-1)
+    c = width-1;
+  if(c==width)
+    c = 0;
+  if(r<0)
+    return getBit(ghostUp, 0, c, width);
+  if(r>=height)
+    return getBit(ghostDown, 0, c, width);
+  return getBit(A, r, c, width);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

@@ -438,6 +438,7 @@
   <arg num="1" specialize="false">
     <values>
       <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="2" specialize="false">
@@ -474,6 +475,7 @@
   <arg num="1" specialize="false">
     <values>
       <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="2" specialize="false">
@@ -494,6 +496,32 @@
     <arg num="3"><values><value type="intval"><intval isSigned="true" val="16"/></value></values></arg>
    </specialization>
  </specializations>
+</fInfo>
+<fInfo name="countAliveNeighbors" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="6">
+  <arg num="0" specialize="false">
+    <values>
+    </values>
+  </arg>
+  <arg num="1" specialize="false">
+    <values>
+    </values>
+  </arg>
+  <arg num="2" specialize="false">
+    <values>
+    </values>
+  </arg>
+  <arg num="3" specialize="false">
+    <values>
+    </values>
+  </arg>
+  <arg num="4" specialize="false">
+    <values>
+    </values>
+  </arg>
+  <arg num="5" specialize="false">
+    <values>
+    </values>
+  </arg>
 </fInfo>
 <fInfo name="delay_microseconds" global="true" specialize="false" noreturn="false" doNotSpecialize="true" numParams="1">
   <arg num="0" specialize="false">
@@ -530,7 +558,7 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="getBit" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="4">
+<fInfo name="getBit" global="true" specialize="true" noreturn="false" doNotSpecialize="false" numParams="4">
   <arg num="0" specialize="false">
     <values>
       <value type="unknown"/>
@@ -538,6 +566,8 @@
   </arg>
   <arg num="1" specialize="false">
     <values>
+      <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="2" specialize="false">
@@ -545,10 +575,19 @@
       <value type="unknown"/>
     </values>
   </arg>
-  <arg num="3" specialize="false">
+  <arg num="3" specialize="true">
     <values>
+      <value type="intval"><intval isSigned="true" val="16"/></value>
     </values>
   </arg>
+ <specializations>
+   <specialization id="0">
+    <arg num="0"><values><value type="unknown"/></values></arg>
+    <arg num="1"><values><value type="unknown"/></values></arg>
+    <arg num="2"><values><value type="unknown"/></values></arg>
+    <arg num="3"><values><value type="intval"><intval isSigned="true" val="16"/></value></values></arg>
+   </specialization>
+ </specializations>
 </fInfo>
 <fInfo name="get_read_data" global="true" interface="i2c_master_async_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="false">
@@ -886,6 +925,7 @@
   <arg num="2" specialize="false">
     <values>
       <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="3" specialize="true">
@@ -912,23 +952,35 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="sendLineTo" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="4">
+<fInfo name="sendLineTo" global="true" specialize="true" noreturn="false" doNotSpecialize="false" numParams="4">
   <arg num="0" specialize="false">
     <values>
     </values>
   </arg>
   <arg num="1" specialize="false">
     <values>
+      <value type="unknown"/>
     </values>
   </arg>
   <arg num="2" specialize="false">
     <values>
+      <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
-  <arg num="3" specialize="false">
+  <arg num="3" specialize="true">
     <values>
+      <value type="intval"><intval isSigned="true" val="16"/></value>
     </values>
   </arg>
+ <specializations>
+   <specialization id="0">
+    <arg num="0"><values><value type="unknown"/></values></arg>
+    <arg num="1"><values><value type="unknown"/></values></arg>
+    <arg num="2"><values><value type="unknown"/></values></arg>
+    <arg num="3"><values><value type="intval"><intval isSigned="true" val="16"/></value></values></arg>
+   </specialization>
+ </specializations>
 </fInfo>
 <fInfo name="send_stop_bit" global="true" interface="i2c_master_async_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
 </fInfo>
@@ -943,6 +995,7 @@
   <arg num="1" specialize="false">
     <values>
       <value type="unknown"/>
+      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="2" specialize="false">
