@@ -7,11 +7,10 @@
 #include "pgmIO.h"
 #include "i2c.h"
 #include "bitArray.h"
+#include "workerHelper.h"
 
 #define  IMHT 16                  //image height
 #define  IMWD 16                  //image width
-
-//typedef unsigned char uchar;      //using uchar as shorthand
 
 port p_scl = XS1_PORT_1E;         //interface ports to accelerometer
 port p_sda = XS1_PORT_1F;
@@ -26,6 +25,48 @@ port p_sda = XS1_PORT_1F;
 #define FXOS8700EQ_OUT_Y_LSB 0x4
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
+
+on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
+on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
+
+//DISPLAYS a LED pattern
+int showLEDs(out port p, chanend fromVisualiser) {
+  int shutdown = 0;
+  int pattern; //1st bit...separate green LED
+               //2nd bit...blue LED
+               //3rd bit...green LED
+               //4th bit...red LED
+  while (!shutdown) {
+    fromVisualiser :> pattern;   //receive new pattern from visualiser
+    if(pattern == 0xFF)
+      shutdown = 1;
+    else
+      p <: pattern;                //send pattern to LED port
+  }
+  printf("Led Controller is shutting down\n");
+  return 0;
+}
+
+//READ BUTTONS and send button pattern to userAnt
+void buttonListener(in port b, chanend toUserAnt) {
+  int shutdown = 0;
+  int r;
+  while (!shutdown) {
+    b when pinseq(15)  :> r;
+    select {
+      case b when pinsneq(15) :> r:
+        //b when pinseq(15)  :> r;    // check that no button is pressed
+        //b when pinsneq(15) :> r;    // check if some buttons are pressed
+        if ((r==13) || (r==14))     // if either button is pressed
+        toUserAnt <: r;             // send button pattern to userAnt
+        break;
+      case toUserAnt :> shutdown:
+        shutdown = 1;
+        break;
+    }
+  }
+  printf("Button listener shutting down\n");
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -91,74 +132,31 @@ void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAc
 }
 
 //TO BE MOVED TO HEADER FILE
-void sendLineTo(streaming chanend to, uchar A[], int line, int size){
-  for(int i=0;i<size;i++){
-    to <: getBit(A, line, i, size);
-  }
+
+uchar decide(int aliveNeighbours, uchar itselfAlive){
+  if(aliveNeighbours<2)
+    return 0;
+  if(aliveNeighbours>3)
+    return 0;
+  if(aliveNeighbours==3)
+    return 1;
+  return itselfAlive;
 }
 
-void receiveLineFrom(streaming chanend from, uchar A[], int line, int size){
-  uchar a;
-  for(int i=0;i<size;i++){
-    from :> a;
-    changeBit(A, line, i, a, size);
-  }
-}
-//-------------------------------
-
-void workerThread(int id, streaming chanend from_Dist, streaming chanend up,
-                  streaming chanend down, const int numberOfLines, /*const int width,*/
-                  static const int sizeOfArray){
-
-  uchar A[sizeOfArray];
-  uchar ghostUp[(IMWD + 8 - 1) / 8];
-  uchar ghostDown[(IMWD + 8 - 1) / 8];
-  //Receive Lines
-  for(int i=0;i<numberOfLines;i++){
-    receiveLineFrom(from_Dist, A, i, IMWD);
-  }
-
-  //Send ghost rows
-  uint8_t eventA = 0;
-  uint8_t eventB = 0;
-  //REFACTOR!!!
-  do {
-    select {
-      case up :> uchar a: //remember to send soemthing irrelevant at the beginning
-        receiveLineFrom(up, ghostUp, 0, IMWD);
-        eventA = 1;
-        break;
-      default:
-        if(!eventB){
-          down <: 1;
-          sendLineTo(down, A, numberOfLines-1, IMWD);
-          eventB = 1;
-        }
-        break;
-    }
-  } while(!eventA || !eventB);
-  eventA = 0; eventB = 0;
-  do {
-    select {
-      case down :> uchar a: //remember to send soemthing irrelevant at the beginning
-        receiveLineFrom(down, ghostDown, 0, IMWD);
-        eventA = 1;
-        break;
-      default:
-        if(!eventB){
-          up <: 1;
-          sendLineTo(up, A, 0, IMWD);
-          eventB = 1;
-        }
-        break;
-    }
-  } while(!eventA || !eventB);
-  //--------------------------------
-
-
+uchar getBitWithGhosts(uchar A[], uchar ghostUp[], uchar ghostDown[],
+                       int width, int height, int r, int c){
+  if(c==-1)
+    c = width-1;
+  if(c==width)
+    c = 0;
+  if(r<0)
+    return getBit(ghostUp, 0, c, width);
+  if(r>=height)
+    return getBit(ghostDown, 0, c, width);
+  return getBit(A, r, c, width);
 }
 
-int countAliveNeighbors(uchar A[], uchar ghostUp[], uchar ghostDown[], int width, int height, int r, int c){
+int countAliveNeighbours(uchar A[], uchar ghostUp[], uchar ghostDown[], int width, int height, int r, int c){
   int topLeftX = r - 1;
   int topLeftY = c - 1;
   int botRightX = r + 1;
@@ -173,17 +171,88 @@ int countAliveNeighbors(uchar A[], uchar ghostUp[], uchar ghostDown[], int width
   return res - itself;
 }
 
-uchar getBitWithGhosts(uchar A[], uchar ghostUp[], uchar ghostDown[],
-                       int width, int height, int r, int c){
-  if(c==-1)
-    c = width-1;
-  if(c==width)
-    c = 0;
-  if(r<0)
-    return getBit(ghostUp, 0, c, width);
-  if(r>=height)
-    return getBit(ghostDown, 0, c, width);
-  return getBit(A, r, c, width);
+//-------------------------------
+
+void worker(int id, streaming chanend distributor,
+            const int ROWS, const int COLS, static const int DATAVOLUME){
+  //DATAVOLUME = ((ROWS+2)*COLUMNS + 8 - 1) / 8
+  uint8_t mode = FEEDING_MODE;
+  uint8_t ghostsSent = 0;
+  uint8_t ghostsReceived = 0;
+  uchar A[DATAVOLUME];
+  uchar B[DATAVOLUME];
+  uchar *old = A;
+  uchar *new = B;
+  while(1){
+    if(mode == FEEDING_MODE){
+      select {
+        case distributor :> uint8_t command: // signal beginning of data
+          /*if(command == 0xFF){
+
+            for(int r = 0; r<ROWS; r++){
+              for(int c = 0; c<COLS; c++){
+                up :> command;
+                changeBit(data, r, c, command, COLS);
+              }
+            }
+
+            while(1){
+              up :> command;
+              if(!isnull(down))
+                down <: command;
+              if(command == 0xFF)
+                break;
+            }
+
+          }*/
+          if(command!=DISTR_CODE){
+            printf("ERROR OCCURED! WORKER %d DID NOT RECEIVE DISTRIBUTOR SIGNATURE(START OF MESSAGE)!\n",id);
+            return;
+          }
+          //Reserve top and bottom row for ghosts
+          for(int r=1 ; r<ROWS ; r++){
+            receiveLineFrom(distributor, old, r, COLS);
+          }
+
+          distributor :> command;
+          if(command!=0xFF){
+            printf("ERROR OCCURED! WORKER %d DID NOT RECEIVE DISTRIBUTOR SIGNATURE(END OF MESSAGE)!\n",id);
+            return;
+          }
+          mode = GHOST_EXCHANGE_MODE;
+          break;
+      }
+    }
+    else if (mode == GHOST_EXCHANGE_MODE) {
+      timer tmr;
+      select {
+        case distributor :> uint8_t command: //REMEMBER TO SWAP CODES IN DISTRIBUTOR
+          if(ghostsReceived == 2)
+            mode = PROCESSING_MODE;
+          if(command == WORKER_ABOVE){
+            receiveLineFrom(distributor, old, 0, COLS);
+            ghostsReceived++;
+          } else if(command == WORKER_BELOW){
+            receiveLineFrom(distributor, old, ROWS, COLS);
+            ghostsReceived++;
+          } else {
+            printf("COMMAND INVALID IN THIS MODE!\n");
+          }
+          break;
+        case !ghostsSent => tmr when timerafter(id*1000) :> void:
+          sendLineTo(WORKER_ABOVE, distributor, old, 0, COLS);
+          sendLineTo(WORKER_BELOW, distributor, old, ROWS, COLS);
+          ghostsSent = 1;
+          break;
+      }
+    }
+    else if (mode == PROCESSING_MODE) {
+
+    }
+    else {
+
+    }
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
