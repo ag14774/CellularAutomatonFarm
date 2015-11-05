@@ -9,6 +9,13 @@
 #include "bitArray.h"
 #include "workerHelper.h"
 
+#define NUMBEROFWORKERSINTILE0 3
+#define NUMBEROFWORKERSINTILE1 7
+#define MAXLINEBYTES 250
+#define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
+#define PERWORKERMEMORYINTILE1 CHUNK0/NUMBEROFWORKERSINTILE1
+#define CHUNK0       100*1024
+
 #define  IMHT 16                  //image height
 #define  IMWD 16                  //image width
 
@@ -28,6 +35,20 @@ port p_sda = XS1_PORT_1F;
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
 on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
+
+typedef interface d2w{
+  [[clears_notification]]
+  {int,int,int} get_data(uchar part[]); //returns startline to be used as base pointer
+                                        //line count expected to be processed
+                                        //total column count
+
+  int send_line(uchar line[],int linenumber);
+
+  [[notification]]
+  slave void data_ready(void);
+
+
+} d2w;
 
 //DISPLAYS a LED pattern
 int showLEDs(out port p, chanend fromVisualiser) {
@@ -110,6 +131,7 @@ void DataInStream(char infname[], streaming chanend c_out){
 /////////////////////////////////////////////////////////////////////////////////////////
 void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAcc) {
   uchar val;
+  uchar data[CHUNK0];
 
   //Starting up and wait for tilting of the xCore-200 Explorer
   printf( "ProcessImage:Start, size = %dx%d\n", IMHT, IMWD );
@@ -120,14 +142,32 @@ void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAc
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
   printf( "Processing...\n" );
-  uchar testArray[(IMHT*IMWD + 8 - 1) / 8];
   for( int y = 0; y < IMHT; y++ ) {   //go through all lines
     for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
       c_in :> val;                    //read the pixel value
-      changeBit(testArray, y, x, val, IMWD);
+      changeBit(data, y, x, val, IMWD);
       c_out <: (uchar)( val ^ 0xFF ); //send some modified pixel out
     }
   }
+
+  /*TEST
+  for( int y = 0; y < IMHT; y++ ) {
+      for( int x = 0; x < IMWD; x++ ) {
+        uchar c = getBit(data, y, x, IMWD);
+        printf("%d",c);
+      }
+      printf("\n");
+  }
+  */
+
+//  for(int i = 0;i<n;i++){
+//    workers[i].data_ready();
+//  }
+//
+//  select {
+//    case workers[int j].get_data()->
+//  }
+
   printf( "\nOne processing round completed...\n" );
 }
 
@@ -143,20 +183,15 @@ uchar decide(int aliveNeighbours, uchar itselfAlive){
   return itselfAlive;
 }
 
-uchar getBitWithGhosts(uchar A[], uchar ghostUp[], uchar ghostDown[],
-                       int width, int height, int r, int c){
+uchar getBitToroidal(uchar A[], int r, int c, int width){
   if(c==-1)
     c = width-1;
   if(c==width)
     c = 0;
-  if(r<0)
-    return getBit(ghostUp, 0, c, width);
-  if(r>=height)
-    return getBit(ghostDown, 0, c, width);
   return getBit(A, r, c, width);
 }
 
-int countAliveNeighbours(uchar A[], uchar ghostUp[], uchar ghostDown[], int width, int height, int r, int c){
+int countAliveNeighbours(uchar A[], int r, int c, int width){
   int topLeftX = r - 1;
   int topLeftY = c - 1;
   int botRightX = r + 1;
@@ -165,7 +200,7 @@ int countAliveNeighbours(uchar A[], uchar ghostUp[], uchar ghostDown[], int widt
   uchar itself = getBit(A, r, c, width);
   for(int x = topLeftX ; x<=botRightX ; x++){
     for(int y = topLeftY ; y<=botRightY ; y++){
-      res += getBitWithGhosts(A, ghostUp, ghostDown, width, height, r, c);
+      res += getBitToroidal(A, x, y, width);
     }
   }
   return res - itself;
@@ -173,7 +208,32 @@ int countAliveNeighbours(uchar A[], uchar ghostUp[], uchar ghostDown[], int widt
 
 //-------------------------------
 
-void worker(int id, streaming chanend distributor,
+void worker(int id, client d2w distributor){
+  uchar part[PERWORKERMEMORYINTILE0];
+  uchar line[MAXLINEBYTES];
+  int startLine = 0;
+  int linesReceived = 0;
+  int totalCols = 0;
+  select {
+    case distributor.data_ready():
+      {startLine,linesReceived,totalCols} = distributor.get_data(part);
+      break;
+  }
+  //PROCESS HERE AND COMMUNICATE EACH LINE
+
+  for(int x=1; x<=linesReceived;x++){
+    for(int y=0; y<totalCols;y++){
+      uchar itself = getBit(part, x, y, totalCols);
+      int neighbours = countAliveNeighbours(part, x, y, totalCols);
+      uchar res = decide(neighbours, itself);
+      changeBit(line, 0, y, res, totalCols);
+    }
+    distributor.send_line(line,startLine+x-1);
+  }
+
+}
+
+/*void worker(int id, streaming chanend distributor, client w dist,
             const int ROWS, const int COLS, static const int DATAVOLUME){
   //DATAVOLUME = ((ROWS+2)*COLUMNS + 8 - 1) / 8
   uint8_t mode = FEEDING_MODE;
@@ -187,24 +247,6 @@ void worker(int id, streaming chanend distributor,
     if(mode == FEEDING_MODE){
       select {
         case distributor :> uint8_t command: // signal beginning of data
-          /*if(command == 0xFF){
-
-            for(int r = 0; r<ROWS; r++){
-              for(int c = 0; c<COLS; c++){
-                up :> command;
-                changeBit(data, r, c, command, COLS);
-              }
-            }
-
-            while(1){
-              up :> command;
-              if(!isnull(down))
-                down <: command;
-              if(command == 0xFF)
-                break;
-            }
-
-          }*/
           if(command!=DISTR_CODE){
             printf("ERROR OCCURED! WORKER %d DID NOT RECEIVE DISTRIBUTOR SIGNATURE(START OF MESSAGE)!\n",id);
             return;
@@ -253,7 +295,7 @@ void worker(int id, streaming chanend distributor,
 
     }
   }
-}
+}*/
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //

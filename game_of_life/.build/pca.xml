@@ -535,6 +535,8 @@
     </values>
   </arg>
 </fInfo>
+<fInfo name="data_ready" global="true" interface="d2w" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
+</fInfo>
 <fInfo name="decide" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="false">
     <values>
@@ -639,6 +641,13 @@
   </arg>
   <arg num="6" specialize="false">
     <values>
+    </values>
+  </arg>
+</fInfo>
+<fInfo name="get_data" global="true" interface="d2w" specialize="false" noreturn="false" doNotSpecialize="false" numParams="1">
+  <arg num="0" specialize="false">
+    <values>
+      <value type="unknown"/>
     </values>
   </arg>
 </fInfo>
@@ -982,12 +991,10 @@
   </arg>
   <arg num="1" specialize="false">
     <values>
-      <value type="unknown"/>
     </values>
   </arg>
   <arg num="2" specialize="false">
     <values>
-      <value type="unknown"/>
     </values>
   </arg>
   <arg num="3" specialize="false">
@@ -995,21 +1002,9 @@
     </values>
   </arg>
 </fInfo>
-<fInfo name="roundUpToChar" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="2">
+<fInfo name="sendLineTo" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="5">
   <arg num="0" specialize="false">
     <values>
-    </values>
-  </arg>
-  <arg num="1" specialize="false">
-    <values>
-    </values>
-  </arg>
-</fInfo>
-<fInfo name="sendLineTo" global="true" specialize="true" noreturn="false" doNotSpecialize="false" numParams="5">
-  <arg num="0" specialize="false">
-    <values>
-      <value type="intval"><intval isSigned="true" val="224"/></value>
-      <value type="intval"><intval isSigned="true" val="225"/></value>
     </values>
   </arg>
   <arg num="1" specialize="false">
@@ -1018,27 +1013,22 @@
   </arg>
   <arg num="2" specialize="false">
     <values>
-      <value type="unknown"/>
     </values>
   </arg>
-  <arg num="3" specialize="true">
+  <arg num="3" specialize="false">
     <values>
-      <value type="intval"><intval isSigned="true" val="0"/></value>
     </values>
   </arg>
   <arg num="4" specialize="false">
     <values>
     </values>
   </arg>
- <specializations>
-   <specialization id="0">
-    <arg num="0"><values><value type="unknown"/></values></arg>
-    <arg num="1"><values><value type="unknown"/></values></arg>
-    <arg num="2"><values><value type="unknown"/></values></arg>
-    <arg num="3"><values><value type="intval"><intval isSigned="true" val="0"/></value></values></arg>
-    <arg num="4"><values><value type="unknown"/></values></arg>
-   </specialization>
- </specializations>
+</fInfo>
+<fInfo name="send_line" global="true" interface="d2w" specialize="false" noreturn="false" doNotSpecialize="false" numParams="1">
+  <arg num="0" specialize="false">
+    <values>
+    </values>
+  </arg>
 </fInfo>
 <fInfo name="send_stop_bit" global="true" interface="i2c_master_async_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
 </fInfo>
@@ -1100,24 +1090,12 @@
 </fInfo>
 <fInfo name="stop_bit" global="true" interface="i2c_slave_callback_if" specialize="false" noreturn="false" doNotSpecialize="false" numParams="0">
 </fInfo>
-<fInfo name="worker" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="5">
+<fInfo name="worker" global="true" specialize="false" noreturn="false" doNotSpecialize="false" numParams="2">
   <arg num="0" specialize="false">
     <values>
     </values>
   </arg>
   <arg num="1" specialize="false">
-    <values>
-    </values>
-  </arg>
-  <arg num="2" specialize="false">
-    <values>
-    </values>
-  </arg>
-  <arg num="3" specialize="false">
-    <values>
-    </values>
-  </arg>
-  <arg num="4" specialize="false">
     <values>
     </values>
   </arg>

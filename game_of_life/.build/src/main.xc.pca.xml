@@ -11,6 +11,7 @@
 <fDef name="changeBit" global="true" noreturn="false" doNotSpecialize="false" numParams="5"/>
 <fDef name="clearBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="countAliveNeighbours" global="true" noreturn="false" doNotSpecialize="false" numParams="7"/>
+<fDef name="data_ready" global="true" interface="d2w" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="decide" global="true" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="delay_microseconds" global="true" noreturn="false" doNotSpecialize="true" numParams="1"/>
 <fDef name="delay_milliseconds" global="true" noreturn="false" doNotSpecialize="true" numParams="1"/>
@@ -18,6 +19,7 @@
 <fDef name="distributor" global="true" noreturn="false" doNotSpecialize="false" numParams="3"/>
 <fDef name="getBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="getBitWithGhosts" global="true" noreturn="false" doNotSpecialize="false" numParams="7"/>
+<fDef name="get_data" global="true" interface="d2w" noreturn="false" doNotSpecialize="false" numParams="1"/>
 <fDef name="get_read_data" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="get_write_result" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="1"/>
 <fDef name="main" global="true" noreturn="false" doNotSpecialize="false" numParams="0"/>
@@ -32,8 +34,8 @@
 <fDef name="read_reg16_addr8" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="true" numParams="4"/>
 <fDef name="read_reg8_addr16" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="true" numParams="4"/>
 <fDef name="receiveLineFrom" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
-<fDef name="roundUpToChar" global="true" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="sendLineTo" global="true" noreturn="false" doNotSpecialize="false" numParams="5"/>
+<fDef name="send_line" global="true" interface="d2w" noreturn="false" doNotSpecialize="false" numParams="1"/>
 <fDef name="send_stop_bit" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="send_stop_bit" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="setBit" global="true" noreturn="false" doNotSpecialize="false" numParams="4"/>
@@ -46,7 +48,7 @@
 <fDef name="start_read_request" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="start_write_request" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
 <fDef name="stop_bit" global="true" interface="i2c_slave_callback_if" noreturn="false" doNotSpecialize="false" numParams="0"/>
-<fDef name="worker" global="true" noreturn="false" doNotSpecialize="false" numParams="5"/>
+<fDef name="worker" global="true" noreturn="false" doNotSpecialize="false" numParams="2"/>
 <fDef name="workerCode" global="true" noreturn="false" doNotSpecialize="false" numParams="1"/>
 <fDef name="write" global="true" interface="i2c_master_async_if" noreturn="false" doNotSpecialize="false" numParams="4"/>
 <fDef name="write" global="true" interface="i2c_master_if" noreturn="false" doNotSpecialize="false" numParams="5"/>
@@ -867,115 +869,10 @@
     </values>
   </arg>
 </fCall>
-<fCall name="printf" global="true" numArgs="2">
+<fCall name="get_data" global="true" interface="d2w" numArgs="1">
   <arg num="0">
     <values>
       <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="1">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-</fCall>
-<fCall name="receiveLineFrom" global="true" numArgs="4">
-  <arg num="0">
-    <passThroughArg param="1" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-  <arg num="1">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="2">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="3">
-    <passThroughArg param="3" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-</fCall>
-<fCall name="printf" global="true" numArgs="2">
-  <arg num="0">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="1">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-</fCall>
-<fCall name="__builtin_timer_after" global="true" numArgs="2">
-  <arg num="0">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="1">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-</fCall>
-<fCall name="sendLineTo" global="true" numArgs="5">
-  <arg num="0">
-    <values>
-      <value type="intval"><intval isSigned="true" val="224"/></value>
-    </values>
-  </arg>
-  <arg num="1">
-    <passThroughArg param="1" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-  <arg num="2">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="3">
-    <values>
-      <value type="intval"><intval isSigned="true" val="0"/></value>
-    </values>
-  </arg>
-  <arg num="4">
-    <passThroughArg param="3" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-</fCall>
-<fCall name="sendLineTo" global="true" numArgs="5">
-  <arg num="0">
-    <values>
-      <value type="intval"><intval isSigned="true" val="225"/></value>
-    </values>
-  </arg>
-  <arg num="1">
-    <passThroughArg param="1" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-  <arg num="2">
-    <values>
-      <value type="unknown"/>
-    </values>
-  </arg>
-  <arg num="3">
-    <passThroughArg param="2" caller="worker" global="true"/>
-    <values>
-    </values>
-  </arg>
-  <arg num="4">
-    <passThroughArg param="3" caller="worker" global="true"/>
-    <values>
     </values>
   </arg>
 </fCall>

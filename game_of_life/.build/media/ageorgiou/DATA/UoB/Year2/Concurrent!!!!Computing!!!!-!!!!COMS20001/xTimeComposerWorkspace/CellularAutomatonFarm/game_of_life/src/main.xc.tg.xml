@@ -59,10 +59,6 @@
   <inFunction>write_reg16_addr8</inFunction>
 </task>
 <task>
-  <name>roundUpToChar</name>
-  <inFunction>roundUpToChar</inFunction>
-</task>
-<task>
   <name>setBit</name>
   <inFunction>setBit</inFunction>
 </task>
@@ -77,6 +73,10 @@
 <task>
   <name>getBit</name>
   <inFunction>getBit</inFunction>
+</task>
+<task>
+  <name>getPointerOffsetAtLine</name>
+  <inFunction>getPointerOffsetAtLine</inFunction>
 </task>
 <task>
   <name>mod</name>
@@ -117,8 +117,8 @@
   <inFunction>decide</inFunction>
 </task>
 <task>
-  <name>getBitWithGhosts</name>
-  <inFunction>getBitWithGhosts</inFunction>
+  <name>getBitToroidal</name>
+  <inFunction>getBitToroidal</inFunction>
 </task>
 <task>
   <name>countAliveNeighbours</name>
