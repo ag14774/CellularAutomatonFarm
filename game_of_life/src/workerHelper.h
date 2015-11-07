@@ -8,6 +8,9 @@
 #ifndef WORKERHELPER_H_
 #define WORKERHELPER_H_
 
+#include "bitArray.h"
+
+/*
 #define FEEDING_MODE        0x00
 #define GHOST_EXCHANGE_MODE 0x01
 #define PROCESSING_MODE     0x02
@@ -27,6 +30,7 @@
 #define ERROR_CODE          0xEE
 
 #define START_END_SIGNAL    0xFF
+*/
 
 
 int mod(int a, int b){
@@ -36,7 +40,7 @@ int mod(int a, int b){
   return res;
 }
 
-uint8_t workerCode(int n){
+/*uint8_t workerCode(int n){
   if(n>15 || n<0) {
     printf("WORKERS ALLOWED: 0-15\n");
     return ERROR_CODE;
@@ -60,6 +64,39 @@ void receiveLineFrom(streaming chanend from, uchar A[], int line, int length){
     from :> a;
     changeBit(A, line, i, a, length);
   }
+}*/
+
+uchar decide(int aliveNeighbours, uchar itselfAlive){
+  if(aliveNeighbours<2)
+    return 0;
+  if(aliveNeighbours>3)
+    return 0;
+  if(aliveNeighbours==3)
+    return 1;
+  return itselfAlive;
+}
+
+uchar getBitToroidal(uchar A[], int r, int c, int width){
+  if(c==-1)
+    c = width-1;
+  if(c==width)
+    c = 0;
+  return getBit(A, r, c, width);
+}
+
+int countAliveNeighbours(uchar A[], int r, int c, int width){
+  int topLeftX = r - 1;
+  int topLeftY = c - 1;
+  int botRightX = r + 1;
+  int botRightY = c + 1;
+  int res = 0;
+  uchar itself = getBit(A, r, c, width);
+  for(int x = topLeftX ; x<=botRightX ; x++){
+    for(int y = topLeftY ; y<=botRightY ; y++){
+      res += getBitToroidal(A, x, y, width);
+    }
+  }
+  return res - itself;
 }
 
 #endif /* WORKERHELPER_H_ */

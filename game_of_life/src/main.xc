@@ -4,17 +4,19 @@
 #include <platform.h>
 #include <xs1.h>
 #include <stdio.h>
+#include <string.h>
 #include "pgmIO.h"
 #include "i2c.h"
-#include "bitArray.h"
 #include "workerHelper.h"
 
 #define NUMBEROFWORKERSINTILE0 3
 #define NUMBEROFWORKERSINTILE1 7
+
 #define MAXLINEBYTES 250
+#define CHUNK0       95*1024
+
 #define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
 #define PERWORKERMEMORYINTILE1 CHUNK0/NUMBEROFWORKERSINTILE1
-#define CHUNK0       100*1024
 
 #define  IMHT 16                  //image height
 #define  IMWD 16                  //image width
@@ -38,11 +40,13 @@ on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 
 typedef interface d2w{
   [[clears_notification]]
-  {int,int,int} get_data(uchar part[]); //returns startline to be used as base pointer
+  {int,int,int,int} get_data(uchar part[]); //returns startline to be used as base pointer
                                         //line count expected to be processed
                                         //total column count
 
-  int send_line(uchar line[],int linenumber);
+  void get_ghosts(uchar part[], int ghost_Up, int ghost_Down, int ghost_Down_Destination);
+
+  void send_line(uchar line[],int linenumber);
 
   [[notification]]
   slave void data_ready(void);
@@ -106,14 +110,16 @@ void DataInStream(char infname[], streaming chanend c_out){
     return;
   }
 
+  c_out <: IMHT;
+  c_out <: IMWD;
   //Read image line-by-line and send byte by byte to channel c_out
   for( int y = 0; y < IMHT; y++ ) {
     _readinline( line, IMWD );
     for( int x = 0; x < IMWD; x++ ) {
       c_out <: line[ x ];
-      printf( "-%4.1d ", line[ x ] ); //show image values
+      //printf( "-%4.1d ", line[ x ] ); //show image values
     }
-    printf( "\n" );
+    //printf( "\n" );
   }
 
   //Close PGM image file
@@ -129,9 +135,11 @@ void DataInStream(char infname[], streaming chanend c_out){
 // Currently the function just inverts the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAcc) {
+void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAcc, server d2w workers[n], unsigned n) {
   uchar val;
   uchar data[CHUNK0];
+  int height;
+  int width;
 
   //Starting up and wait for tilting of the xCore-200 Explorer
   printf( "ProcessImage:Start, size = %dx%d\n", IMHT, IMWD );
@@ -142,71 +150,59 @@ void distributor(streaming chanend c_in, streaming chanend c_out, chanend fromAc
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
   printf( "Processing...\n" );
-  for( int y = 0; y < IMHT; y++ ) {   //go through all lines
-    for( int x = 0; x < IMWD; x++ ) { //go through each pixel per line
+  c_in :> height;
+  c_in :> width;
+  for( int y = 0; y < height; y++ ) {   //go through all lines
+    for( int x = 0; x < width; x++ ) { //go through each pixel per line
       c_in :> val;                    //read the pixel value
-      changeBit(data, y, x, val, IMWD);
-      c_out <: (uchar)( val ^ 0xFF ); //send some modified pixel out
+      changeBit(data, y, x, val, width);
+//      c_out <: (uchar)( val ^ 0xFF ); //send some modified pixel out
     }
   }
 
-  /*TEST
-  for( int y = 0; y < IMHT; y++ ) {
-      for( int x = 0; x < IMWD; x++ ) {
-        uchar c = getBit(data, y, x, IMWD);
-        printf("%d",c);
-      }
-      printf("\n");
-  }
-  */
+  int linesPerWorker = height / NUMBEROFWORKERSINTILE0;
+  int extraLines     = height % NUMBEROFWORKERSINTILE0;
+  int nextLineToBeAllocated = 0;
 
-//  for(int i = 0;i<n;i++){
-//    workers[i].data_ready();
-//  }
-//
-//  select {
-//    case workers[int j].get_data()->
-//  }
+  for(int i = 0;i<n;i++){
+    workers[i].data_ready();
+  }
+  int linesReceived = 0;
+  while(1) {
+    select {
+      case workers[int j].get_data(uchar part[])
+          -> {int startLine, int linesSent, int totalCols, int totalRows}:
+          startLine = nextLineToBeAllocated;
+          linesSent = linesPerWorker + (extraLines?1:0);
+          extraLines--;
+          nextLineToBeAllocated = startLine + linesSent;
+          totalCols = width;
+          totalRows = height;
+          memcpy(part+lines2bytes(1,width),data+lines2bytes(startLine,width),lines2bytes(linesSent,width));
+          break;
+      case workers[int j].get_ghosts(uchar part[], int ghost_Up, int ghost_Down, int ghost_Down_Dest):
+          memcpy(part,data+lines2bytes(ghost_Up,width),lines2bytes(1,width));
+          memcpy(part+lines2bytes(ghost_Down_Dest,width),data+lines2bytes(ghost_Down,width),lines2bytes(1,width));
+          break;
+      case workers[int j].send_line(uchar line[], int linenumber):
+          memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
+          linesReceived++;
+          if(linesReceived==16){
+            for( int y = 0; y < height; y++ ) {   //go through all lines
+                for( int x = 0; x < width; x++ ) { //go through each pixel per line
+                  uchar ch = getBit(data, y, x, width);
+                  c_out <: (uchar) (ch*255);
+                  //printf("%d ",ch);    //read the pixel value
+                }
+                //printf("\n");
+              }
+          }
+          break;
+    }
+  }
 
   printf( "\nOne processing round completed...\n" );
 }
-
-//TO BE MOVED TO HEADER FILE
-
-uchar decide(int aliveNeighbours, uchar itselfAlive){
-  if(aliveNeighbours<2)
-    return 0;
-  if(aliveNeighbours>3)
-    return 0;
-  if(aliveNeighbours==3)
-    return 1;
-  return itselfAlive;
-}
-
-uchar getBitToroidal(uchar A[], int r, int c, int width){
-  if(c==-1)
-    c = width-1;
-  if(c==width)
-    c = 0;
-  return getBit(A, r, c, width);
-}
-
-int countAliveNeighbours(uchar A[], int r, int c, int width){
-  int topLeftX = r - 1;
-  int topLeftY = c - 1;
-  int botRightX = r + 1;
-  int botRightY = c + 1;
-  int res = 0;
-  uchar itself = getBit(A, r, c, width);
-  for(int x = topLeftX ; x<=botRightX ; x++){
-    for(int y = topLeftY ; y<=botRightY ; y++){
-      res += getBitToroidal(A, x, y, width);
-    }
-  }
-  return res - itself;
-}
-
-//-------------------------------
 
 void worker(int id, client d2w distributor){
   uchar part[PERWORKERMEMORYINTILE0];
@@ -214,88 +210,31 @@ void worker(int id, client d2w distributor){
   int startLine = 0;
   int linesReceived = 0;
   int totalCols = 0;
+  int totalRows = 0;
   select {
     case distributor.data_ready():
-      {startLine,linesReceived,totalCols} = distributor.get_data(part);
+      {startLine,linesReceived,totalCols,totalRows} = distributor.get_data(part);
       break;
   }
-  //PROCESS HERE AND COMMUNICATE EACH LINE
+//  printf("Worker %d: %d %d %d %d\n",id,startLine,linesReceived,totalCols,totalRows);
 
+  distributor.get_ghosts(part, mod(startLine-1,totalRows),
+                         mod(startLine+linesReceived,totalRows), linesReceived+1);
+
+  //PROCESS HERE AND COMMUNICATE EACH LINE
   for(int x=1; x<=linesReceived;x++){
     for(int y=0; y<totalCols;y++){
       uchar itself = getBit(part, x, y, totalCols);
       int neighbours = countAliveNeighbours(part, x, y, totalCols);
       uchar res = decide(neighbours, itself);
       changeBit(line, 0, y, res, totalCols);
+//      printf("%d ",res);
     }
+//    printf("\n");
     distributor.send_line(line,startLine+x-1);
   }
 
 }
-
-/*void worker(int id, streaming chanend distributor, client w dist,
-            const int ROWS, const int COLS, static const int DATAVOLUME){
-  //DATAVOLUME = ((ROWS+2)*COLUMNS + 8 - 1) / 8
-  uint8_t mode = FEEDING_MODE;
-  uint8_t ghostsSent = 0;
-  uint8_t ghostsReceived = 0;
-  uchar A[DATAVOLUME];
-  uchar B[DATAVOLUME];
-  uchar *old = A;
-  uchar *new = B;
-  while(1){
-    if(mode == FEEDING_MODE){
-      select {
-        case distributor :> uint8_t command: // signal beginning of data
-          if(command!=DISTR_CODE){
-            printf("ERROR OCCURED! WORKER %d DID NOT RECEIVE DISTRIBUTOR SIGNATURE(START OF MESSAGE)!\n",id);
-            return;
-          }
-          //Reserve top and bottom row for ghosts
-          for(int r=1 ; r<ROWS ; r++){
-            receiveLineFrom(distributor, old, r, COLS);
-          }
-
-          distributor :> command;
-          if(command!=0xFF){
-            printf("ERROR OCCURED! WORKER %d DID NOT RECEIVE DISTRIBUTOR SIGNATURE(END OF MESSAGE)!\n",id);
-            return;
-          }
-          mode = GHOST_EXCHANGE_MODE;
-          break;
-      }
-    }
-    else if (mode == GHOST_EXCHANGE_MODE) {
-      timer tmr;
-      select {
-        case distributor :> uint8_t command: //REMEMBER TO SWAP CODES IN DISTRIBUTOR
-          if(ghostsReceived == 2)
-            mode = PROCESSING_MODE;
-          if(command == WORKER_ABOVE){
-            receiveLineFrom(distributor, old, 0, COLS);
-            ghostsReceived++;
-          } else if(command == WORKER_BELOW){
-            receiveLineFrom(distributor, old, ROWS, COLS);
-            ghostsReceived++;
-          } else {
-            printf("COMMAND INVALID IN THIS MODE!\n");
-          }
-          break;
-        case !ghostsSent => tmr when timerafter(id*1000) :> void:
-          sendLineTo(WORKER_ABOVE, distributor, old, 0, COLS);
-          sendLineTo(WORKER_BELOW, distributor, old, ROWS, COLS);
-          ghostsSent = 1;
-          break;
-      }
-    }
-    else if (mode == PROCESSING_MODE) {
-
-    }
-    else {
-
-    }
-  }
-}*/
 
 /////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -385,13 +324,17 @@ int main(void) {
   char outfname[] = "testout.pgm"; //put your output image path here
   chan c_control;
   streaming chan c_inIO, c_outIO;       //extend your channel definitions here
+  d2w i_d2w[3];
 
   par {
     i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing accelerometer data
     accelerometer(i2c[0],c_control);        //client thread reading accelerometer data
     DataInStream(infname, c_inIO);          //thread to read in a PGM image
     DataOutStream(outfname, c_outIO);       //thread to write out a PGM image
-    distributor(c_inIO, c_outIO, c_control);//thread to coordinate work on image
+    distributor(c_inIO, c_outIO, c_control, i_d2w, 3);//thread to coordinate work on image
+    worker(0, i_d2w[0]);
+    worker(1, i_d2w[1]);
+    worker(2, i_d2w[2]);
   }
 
   return 0;

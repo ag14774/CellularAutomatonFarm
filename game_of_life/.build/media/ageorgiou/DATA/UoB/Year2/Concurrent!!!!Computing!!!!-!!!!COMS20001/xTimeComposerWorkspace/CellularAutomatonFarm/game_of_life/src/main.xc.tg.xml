@@ -75,24 +75,24 @@
   <inFunction>getBit</inFunction>
 </task>
 <task>
-  <name>getPointerOffsetAtLine</name>
-  <inFunction>getPointerOffsetAtLine</inFunction>
+  <name>lines2bytes</name>
+  <inFunction>lines2bytes</inFunction>
 </task>
 <task>
   <name>mod</name>
   <inFunction>mod</inFunction>
 </task>
 <task>
-  <name>workerCode</name>
-  <inFunction>workerCode</inFunction>
+  <name>decide</name>
+  <inFunction>decide</inFunction>
 </task>
 <task>
-  <name>sendLineTo</name>
-  <inFunction>sendLineTo</inFunction>
+  <name>getBitToroidal</name>
+  <inFunction>getBitToroidal</inFunction>
 </task>
 <task>
-  <name>receiveLineFrom</name>
-  <inFunction>receiveLineFrom</inFunction>
+  <name>countAliveNeighbours</name>
+  <inFunction>countAliveNeighbours</inFunction>
 </task>
 <task>
   <name>showLEDs</name>
@@ -111,18 +111,6 @@
   <name>distributor</name>
   <inFunction>distributor</inFunction>
   <endOfSeqCalledFunction>printf</endOfSeqCalledFunction>
-</task>
-<task>
-  <name>decide</name>
-  <inFunction>decide</inFunction>
-</task>
-<task>
-  <name>getBitToroidal</name>
-  <inFunction>getBitToroidal</inFunction>
-</task>
-<task>
-  <name>countAliveNeighbours</name>
-  <inFunction>countAliveNeighbours</inFunction>
 </task>
 <task>
   <name>worker</name>
@@ -180,6 +168,30 @@
   <core>5</core>
   <inPar/>
 </task>
+<task>
+  <name>_task_worker_5</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>worker</calledFunction>
+  <core>6</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_worker_6</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>worker</calledFunction>
+  <core>7</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_worker_7</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>worker</calledFunction>
+  <core>8</core>
+  <inPar/>
+</task>
 <connection>
   <ends>
     <end task="_task_i2c_master_0" type="server"/>
@@ -209,5 +221,35 @@
     <end task="_task_distributor_4" type="schan"/>
   </ends>
   <name>c_outIO</name>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_distributor_4" type="server"/>
+    <end task="_task_worker_5" type="client"/>
+  </ends>
+    <index>0</index>
+  <name>i_d2w</name>
+   <interface>d2w</interface>
+   <notification>data_ready</notification>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_distributor_4" type="server"/>
+    <end task="_task_worker_6" type="client"/>
+  </ends>
+    <index>1</index>
+  <name>i_d2w</name>
+   <interface>d2w</interface>
+   <notification>data_ready</notification>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_distributor_4" type="server"/>
+    <end task="_task_worker_7" type="client"/>
+  </ends>
+    <index>2</index>
+  <name>i_d2w</name>
+   <interface>d2w</interface>
+   <notification>data_ready</notification>
 </connection>
 </taskgraph>

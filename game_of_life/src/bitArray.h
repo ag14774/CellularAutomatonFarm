@@ -66,7 +66,7 @@ uchar getBit(uchar A[], int r, int c, int WIDTH){
   return (A[realR] >> realC) & 1;
 }
 
-int getPointerOffsetAtLine(int line, int WIDTH){
+int lines2bytes(int line, int WIDTH){
   size_t szc = sizeof(uchar)*8;
   size_t bytesPerLine = (WIDTH + szc - 1) / szc;
   int realR = line*bytesPerLine;
