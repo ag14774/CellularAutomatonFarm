@@ -102,6 +102,26 @@ int _writeoutline(unsigned char line[], int width)
 	return 0;
 }
 
+int _writeoutbyte(unsigned char c)
+{
+  int nb;
+
+  if( _OUTFP == NULL )
+  {
+    return -1;
+  }
+
+  nb = fwrite( &c, 1, 1, _OUTFP );
+
+  if( nb != 1 )
+  {
+    //printf( "Error writing line, nb = %d\n", nb );
+    //Error or end of file
+    return -1;
+  }
+  return 0;
+}
+
 int _closeoutpgm()
 {
 	int ret = fclose( _OUTFP );

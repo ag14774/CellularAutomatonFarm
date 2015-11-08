@@ -14,6 +14,7 @@ int _closeinpgm();
 
 int _openoutpgm(char fname[], int width, int height);
 int _writeoutline(unsigned char line[], int width);
+int _writeoutbyte(unsigned char c);
 int _closeoutpgm();
 
 #endif /*PGMIO_H_*/

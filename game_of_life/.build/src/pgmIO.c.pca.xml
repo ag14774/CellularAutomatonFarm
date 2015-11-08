@@ -64,6 +64,11 @@
   <fCall global="true" name="fwrite.maxtimers"/>
   <fCall global="true" name="_writeoutline.maxchanends"/>
   <fCall global="true" name="fwrite.maxchanends"/>
+  <fCall global="true" name="_writeoutbyte"/>
+  <fCall global="true" name="_writeoutbyte.nstackwords"/>
+  <fCall global="true" name="_writeoutbyte.maxcores"/>
+  <fCall global="true" name="_writeoutbyte.maxtimers"/>
+  <fCall global="true" name="_writeoutbyte.maxchanends"/>
   <fCall global="true" name="_closeoutpgm"/>
   <fCall global="true" name="_closeoutpgm.nstackwords"/>
   <fCall global="true" name="_closeoutpgm.maxcores"/>

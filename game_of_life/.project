@@ -3,6 +3,7 @@
 	<name>Game-of-Life</name>
 	<comment></comment>
 	<projects>
+		<project>lib_i2c</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

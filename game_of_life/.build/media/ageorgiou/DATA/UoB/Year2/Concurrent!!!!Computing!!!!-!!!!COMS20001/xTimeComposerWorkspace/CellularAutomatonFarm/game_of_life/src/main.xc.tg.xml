@@ -101,7 +101,6 @@
 <task>
   <name>buttonListener</name>
   <inFunction>buttonListener</inFunction>
-  <endOfSeqCalledFunction>printf</endOfSeqCalledFunction>
 </task>
 <task>
   <name>DataInStream</name>
@@ -129,73 +128,115 @@
   <inFunction>main</inFunction>
 </task>
 <task>
-  <name>_task_i2c_master_0</name>
+  <name>_task_buttonListener_0</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>i2c_master</calledFunction>
+  <calledFunction>buttonListener</calledFunction>
+  <tile>tile[0]</tile>
   <distributed/>
   <inPar/>
 </task>
 <task>
-  <name>_task_accelerometer_1</name>
+  <name>_task_i2c_master_1</name>
+  <inFunction>main</inFunction>
+  <parent>main</parent>
+  <calledFunction>i2c_master</calledFunction>
+  <tile>tile[0]</tile>
+  <distributed/>
+  <inPar/>
+</task>
+<task>
+  <name>_task_accelerometer_2</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
   <calledFunction>accelerometer</calledFunction>
+  <tile>tile[0]</tile>
   <core>2</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_DataInStream_2</name>
+  <name>_task_showLEDs_3</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>DataInStream</calledFunction>
-  <core>3</core>
+  <calledFunction>showLEDs</calledFunction>
+  <tile>tile[0]</tile>
+  <distributed/>
   <inPar/>
 </task>
 <task>
-  <name>_task_DataOutStream_3</name>
+  <name>_task_DataInStream_4</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>DataOutStream</calledFunction>
+  <calledFunction>DataInStream</calledFunction>
+  <tile>tile[0]</tile>
   <core>4</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_distributor_4</name>
+  <name>_task_DataOutStream_5</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>distributor</calledFunction>
+  <calledFunction>DataOutStream</calledFunction>
+  <tile>tile[0]</tile>
   <core>5</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_worker_5</name>
+  <name>_task_distributor_6</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>worker</calledFunction>
+  <calledFunction>distributor</calledFunction>
+  <tile>tile[0]</tile>
   <core>6</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_worker_6</name>
+  <name>_task_7</name>
   <inFunction>main</inFunction>
   <parent>main</parent>
-  <calledFunction>worker</calledFunction>
-  <core>7</core>
+  <core>8</core>
   <inPar/>
 </task>
 <task>
-  <name>_task_worker_7</name>
+  <name>_task_worker_8</name>
   <inFunction>main</inFunction>
-  <parent>main</parent>
+  <parent>_task_7</parent>
   <calledFunction>worker</calledFunction>
-  <core>8</core>
+  <tile>tile[0]</tile>
+  <core>9</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_worker_9</name>
+  <inFunction>main</inFunction>
+  <parent>_task_7</parent>
+  <calledFunction>worker</calledFunction>
+  <tile>tile[0]</tile>
+  <core>10</core>
+  <inPar/>
+</task>
+<task>
+  <name>_task_worker_10</name>
+  <inFunction>main</inFunction>
+  <parent>_task_7</parent>
+  <calledFunction>worker</calledFunction>
+  <tile>tile[0]</tile>
+  <core>11</core>
   <inPar/>
 </task>
 <connection>
   <ends>
-    <end task="_task_i2c_master_0" type="server"/>
-    <end task="_task_accelerometer_1" type="client"/>
+    <end task="_task_buttonListener_0" type="server"/>
+    <end task="_task_DataOutStream_5" type="client"/>
+  </ends>
+    <index>0</index>
+  <name>i_buttonRequests</name>
+   <interface>buttonRequest</interface>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_i2c_master_1" type="server"/>
+    <end task="_task_accelerometer_2" type="client"/>
   </ends>
     <index>0</index>
   <name>i2c</name>
@@ -203,29 +244,49 @@
 </connection>
 <connection>
   <ends>
-    <end task="_task_accelerometer_1" type="chan"/>
-    <end task="_task_distributor_4" type="chan"/>
+    <end task="_task_accelerometer_2" type="chan"/>
+    <end task="_task_distributor_6" type="chan"/>
   </ends>
   <name>c_control</name>
 </connection>
 <connection>
   <ends>
-    <end task="_task_DataInStream_2" type="schan"/>
-    <end task="_task_distributor_4" type="schan"/>
+    <end task="_task_showLEDs_3" type="server"/>
+    <end task="_task_DataInStream_4" type="client"/>
+  </ends>
+    <index>0</index>
+  <name>i_ledControl</name>
+   <interface>ledControl</interface>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_showLEDs_3" type="server"/>
+    <end task="_task_DataOutStream_5" type="client"/>
+  </ends>
+    <index>1</index>
+  <name>i_ledControl</name>
+   <interface>ledControl</interface>
+</connection>
+<connection>
+  <ends>
+    <end task="_task_DataInStream_4" type="schan"/>
+    <end task="_task_distributor_6" type="schan"/>
   </ends>
   <name>c_inIO</name>
 </connection>
 <connection>
   <ends>
-    <end task="_task_DataOutStream_3" type="schan"/>
-    <end task="_task_distributor_4" type="schan"/>
+    <end task="_task_distributor_6" type="server"/>
+    <end task="_task_DataOutStream_5" type="client"/>
   </ends>
-  <name>c_outIO</name>
+  <name>i_out</name>
+   <interface>outInterface</interface>
+   <notification>end_transaction</notification>
 </connection>
 <connection>
   <ends>
-    <end task="_task_distributor_4" type="server"/>
-    <end task="_task_worker_5" type="client"/>
+    <end task="_task_distributor_6" type="server"/>
+    <end task="_task_worker_8" type="client"/>
   </ends>
     <index>0</index>
   <name>i_d2w</name>
@@ -234,8 +295,8 @@
 </connection>
 <connection>
   <ends>
-    <end task="_task_distributor_4" type="server"/>
-    <end task="_task_worker_6" type="client"/>
+    <end task="_task_distributor_6" type="server"/>
+    <end task="_task_worker_9" type="client"/>
   </ends>
     <index>1</index>
   <name>i_d2w</name>
@@ -244,8 +305,8 @@
 </connection>
 <connection>
   <ends>
-    <end task="_task_distributor_4" type="server"/>
-    <end task="_task_worker_7" type="client"/>
+    <end task="_task_distributor_6" type="server"/>
+    <end task="_task_worker_10" type="client"/>
   </ends>
     <index>2</index>
   <name>i_d2w</name>
