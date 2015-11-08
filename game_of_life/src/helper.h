@@ -8,10 +8,27 @@
 #ifndef HELPER_H_
 #define HELPER_H_
 
+#define STEP_COMPLETED_MODE -1
+#define NEW_STEP_MODE        0
+
+#define NO_LED         0
+#define SEP_GREEN_LED  1
+#define BLUE_LED       2
+#define GREEN_LED      4
+#define RED_LED        8
+
+#define SEP_GREEN_OFF    0xF0
+#define SEP_GREEN_ON     0xF1
+#define BLUE_LED_OFF     0xF2
+#define BLUE_LED_ON      0xF3
+#define GREEN_LED_OFF    0xF4
+#define GREEN_LED_ON     0xF5
+#define RED_LED_OFF      0xF6
+#define RED_LED_ON       0xF7
+
+#define TOGGLE_SEP_GREEN 0xF8
+
 #include "bitArray.h"
-
-#define INITIALIZE_WRITE_OUT 0xAA
-
 
 int mod(int a, int b){
   int res=a%b;
@@ -52,17 +69,5 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
   }
   return res - itself;
 }
-
-/*void dumpData(uchar data[], int height, int width, streaming chanend c_out) {
-  c_out <: INITIALIZE_WRITE_OUT;
-  for( int y = 0; y < height; y++ ) {   //go through all lines
-    for( int x = 0; x < width; x++ ) { //go through each pixel per line
-      uchar ch = getBit(data, y, x, width);
-      //printf("%d ",ch);
-      c_out <: (uchar)( ch * 255 ); //send some modified pixel out
-    }
-    //printf("\n");
-  }
-}*/
 
 #endif /* HELPER_H_ */

@@ -2,13 +2,14 @@
 
 FILE *_INFP = NULL;
 FILE *_OUTFP = NULL;
+int inwidth;
+int inheight;
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 //Line-wise pgm in:
-int _openinpgm(char fname[], int width, int height)
+int _openinpgm(char fname[])
 {
 	char str[ 64 ];
-    int inwidth, inheight;
 
 	_INFP = fopen( fname, "rb" );
 	if( _INFP == NULL )
@@ -20,13 +21,41 @@ int _openinpgm(char fname[], int width, int height)
     fgets( str, 64, _INFP ); //Version: P5
     fgets( str, 64, _INFP ); //width and height
     sscanf( str, "%d%d", &inwidth, &inheight );
-    if( inwidth != width || inheight != height )
+/*    if( inwidth != width || inheight != height )
     {
     	printf( "Input image size(%dx%d) does not = %dx%d or trouble reading header\n", inwidth, inheight, width, height );
     	return -1;
-    }
+    }*/
     fgets( str, 64, _INFP ); //bit depth, must be 255
 	return 0;
+}
+
+int _getheight(){
+  return inheight;
+}
+
+int _getwidth(){
+  return inwidth;
+}
+
+unsigned char _readinbyte() {
+  int nb;
+  unsigned char byte;
+
+  if( _INFP == NULL )
+  {
+    return -1;
+  }
+
+  nb = fread( &byte, 1, 1, _INFP );
+
+  if( nb != 1 )
+  {
+    //printf( "Error reading byte, nb = %d\n", nb );
+    //Error or end of file
+    return -1;
+  }
+  return byte;
 }
 
 int _readinline(unsigned char line[], int width)
@@ -115,7 +144,7 @@ int _writeoutbyte(unsigned char c)
 
   if( nb != 1 )
   {
-    //printf( "Error writing line, nb = %d\n", nb );
+    //printf( "Error writing byte, nb = %d\n", nb );
     //Error or end of file
     return -1;
   }

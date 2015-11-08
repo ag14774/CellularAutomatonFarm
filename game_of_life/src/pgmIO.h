@@ -8,8 +8,12 @@
 int _writepgm(unsigned char x[], int height, int width, char fname[]);
 int _readpgm(unsigned char x[], int height, int width, char fname[]);
 
-int _openinpgm(char fname[], int width, int height);
+int _getheight();
+int _getwidth();
+
+int _openinpgm(char fname[]);
 int _readinline(unsigned char line[], int width);
+unsigned char _readinbyte();
 int _closeinpgm();
 
 int _openoutpgm(char fname[], int width, int height);

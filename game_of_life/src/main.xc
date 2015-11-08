@@ -23,7 +23,7 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
-#define NUMBEROFWORKERSINTILE0 3
+#define NUMBEROFWORKERSINTILE0 1
 #define NUMBEROFWORKERSINTILE1 7
 
 #define MAXLINEBYTES 250
@@ -31,9 +31,6 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 
 #define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
 #define PERWORKERMEMORYINTILE1 CHUNK0/NUMBEROFWORKERSINTILE1
-
-#define  IMHT 64                  //image height
-#define  IMWD 64                  //image width
 
 #define INPUT_FILE "test.pgm"
 #define OUTPUT_FILE "testout.pgm"
@@ -46,7 +43,6 @@ typedef interface d2w {
   {int,int,int,int} get_data(uchar part[]); //returns startline to be used as base pointer
                                         //line count expected to be processed
                                         //total column count
-//  void get_ghosts(uchar part[], int ghost_Up, int ghost_Down, int ghost_Down_Destination);
 
   void send_line(uchar line[],int linenumber);
 
@@ -56,7 +52,7 @@ typedef interface d2w {
 } d2w;
 
 typedef interface ledControl {
-  void send_pattern(int pattern);
+  void send_command(int command);
 } ledControl;
 
 typedef interface buttonRequest {
@@ -68,7 +64,7 @@ typedef interface outInterface {
   void request_line(uchar line[],int linenumber);
 
   [[guarded]]
-  void initialize_transaction();
+  {int,int} initialize_transaction();
 
   [[notification]]
   slave void data_ready(void);
@@ -78,17 +74,51 @@ typedef interface outInterface {
   void end_transaction();
 } outInterface;
 
+typedef interface inInterface {
+  {int,int} initialize_transaction();
+
+  [[notification]]
+  slave void user_input_received(void);
+
+  void request_line(uchar data[], int linenumber, int width);
+
+  [[clears_notification]]
+  void end_transaction();
+} inInterface;
+
+typedef interface accInterface {
+  [[guarded]]void pause();
+  [[guarded]]void unpause();
+} accInterface;
+
 //DISPLAYS a LED pattern
 [[distributable]]
 void showLEDs(out port p, server ledControl clients[n], unsigned n) {
-               //1st bit...separate green LED
-               //2nd bit...blue LED
-               //3rd bit...green LED
-               //4th bit...red LED
-  while (1) {
-    select{
-      case clients[int j].send_pattern(int pattern):
-        p <: pattern;                //send pattern to LED port
+  int currentPattern = NO_LED;                      //1st bit...separate green LED
+  while (1) {                                       //2nd bit...blue LED
+    select{                                         //3rd bit...green LED
+      case clients[int j].send_command(int command)://4th bit...red LED
+        if(command==NO_LED)
+          currentPattern = NO_LED;
+        else if(command==SEP_GREEN_OFF)
+          currentPattern &= ~SEP_GREEN_LED;
+        else if(command==SEP_GREEN_ON)
+          currentPattern |= SEP_GREEN_LED;
+        else if(command==TOGGLE_SEP_GREEN)
+          currentPattern ^= SEP_GREEN_LED;
+        else if(command==BLUE_LED_OFF)
+          currentPattern &= ~BLUE_LED;
+        else if(command==BLUE_LED_ON)
+          currentPattern |= BLUE_LED;
+        else if(command==GREEN_LED_OFF)
+          currentPattern &= ~GREEN_LED;
+        else if(command==GREEN_LED_ON)
+          currentPattern |= GREEN_LED;
+        else if(command==RED_LED_OFF)
+          currentPattern &= ~RED_LED;
+        else if(command==RED_LED_ON)
+          currentPattern |= RED_LED;
+        p <: currentPattern;
         break;
     }
   }
@@ -124,37 +154,43 @@ void buttonListener(in port b, server buttonRequest clients[n], unsigned n) {
 // Read Image from PGM file from path infname[] to channel c_out
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void DataInStream(streaming chanend c_out, client ledControl toLeds){
+[[distributable]]
+void DataInStream(server inInterface fromDistributor, client ledControl toLeds, client buttonRequest fromButtons){
   char infname[] = INPUT_FILE;     //put your input image path here
   int res;
-  uchar line[ IMWD ];
+  uchar line[MAXLINEBYTES];
   printf( "DataInStream: Start...\n" );
 
-  //Open PGM file
-  res = _openinpgm( infname, IMWD, IMHT );
-  if( res ) {
-    printf( "DataInStream: Error openening %s\n.", infname );
-    return;
+  while(1){
+    select{
+      case fromDistributor.initialize_transaction() -> {int height, int width}:
+        fromButtons.requestUserInput(2);
+        //Open PGM file
+        res = _openinpgm( infname );
+        if( res ) {
+          printf( "DataInStream: Error openening %s\n.", infname );
+          return;
+        }
+        height = _getheight();
+        width  = _getwidth();
+        fromDistributor.user_input_received();
+        toLeds.send_command(GREEN_LED_ON);
+        break;
+      case fromDistributor.request_line(uchar data[], int linenumber, int width):
+        //Read image byte-by-byte and copy line to distributor
+        for(int y=0;y<width;y++){
+          uchar byte = _readinbyte();
+          changeBit(line, 0, y, byte, width);
+        }
+        memcpy(data+lines2bytes(linenumber,width),line,lines2bytes(1,width));
+        break;
+      case fromDistributor.end_transaction():
+        //Close PGM image file
+        _closeinpgm();
+        toLeds.send_command(GREEN_LED_OFF);
+        break;
   }
-
-  c_out <: IMHT;
-  c_out <: IMWD;
-  //Read image line-by-line and send byte by byte to channel c_out
-  for( int y = 0; y < IMHT; y++ ) {
-    _readinline( line, IMWD );
-    for( int x = 0; x < IMWD; x++ ) {
-      c_out <: line[ x ];
-      toLeds.send_pattern(4);
-      //printf( "-%4.1d ", line[ x ] ); //show image values
-    }
-    //printf( "\n" );
-  }
-  toLeds.send_pattern(0);
-
-  //Close PGM image file
-  _closeinpgm();
-  printf( "DataInStream:Done...\n" );
-  return;
+ }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -164,37 +200,41 @@ void DataInStream(streaming chanend c_out, client ledControl toLeds){
 // Currently the function just inverts the image
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void distributor(streaming chanend c_in, server outInterface i_out, chanend fromAcc, server d2w workers[n], unsigned n) {
+void distributor(client inInterface toDataIn, server outInterface i_out, server accInterface fromAcc,
+                 client ledControl toLeds, server d2w workers[n], unsigned n) {
   uchar data[CHUNK0];
   int height;
   int width;
-  int linesReceived = -1;
+  int mode = STEP_COMPLETED_MODE;
   int linesPerWorker;
   int extraLines;
   int nextLineToBeAllocated;
   uint8_t outputRequested = 0;
+  uint8_t pauseRequested = 0;
 
-  //Starting up and wait for tilting of the xCore-200 Explorer
-  printf( "ProcessImage:Start, size = %dx%d\n", IMHT, IMWD );
-  printf( "Waiting for Board Tilt...\n" );
-//  fromAcc :> int value;
-  printf( "Processing...\n" );
 
   //Read in and do something with your image values..
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
-  uchar val;
-  c_in :> height;
-  c_in :> width;
-  for( int y = 0; y < height; y++ ) {   //go through all lines
-    for( int x = 0; x < width; x++ ) { //go through each pixel per line
-      c_in :> val;                    //read the pixel value
-      changeBit(data, y, x, val, width);
-    }
+  {height,width} = toDataIn.initialize_transaction();
+  select{
+    case toDataIn.user_input_received():
+      for( int y = 0; y < height; y++ ) {
+          toDataIn.request_line(data, y, width);
+      }
+      toDataIn.end_transaction();
+      break;
   }
 
+  //Starting up and wait for tilting of the xCore-200 Explorer
+  printf( "ProcessImage:Start, size = %dx%d\n", height, width );
+  printf( "Waiting for Board Tilt...\n" );
+//  fromAcc :> int value;
+  printf( "Processing...\n" );
+
   while(1) {
-    if(linesReceived == -1){
+    if(mode == STEP_COMPLETED_MODE){
+      toLeds.send_command(TOGGLE_SEP_GREEN);
       if(outputRequested)
         i_out.data_ready();
       while(outputRequested){
@@ -204,6 +244,16 @@ void distributor(streaming chanend c_in, server outInterface i_out, chanend from
               break;
           case i_out.end_transaction():
             outputRequested = 0;
+            break;
+        }
+      }
+      while(pauseRequested){
+        printf("PAUSED!\n");
+        toLeds.send_command(RED_LED_ON);
+        select {
+          case fromAcc.unpause():
+            pauseRequested = 0;
+            toLeds.send_command(RED_LED_OFF);
             break;
         }
       }
@@ -217,7 +267,7 @@ void distributor(streaming chanend c_in, server outInterface i_out, chanend from
     select {
       case workers[int j].get_data(uchar part[])
           -> {int startLine, int linesSent, int totalCols, int totalRows}:
-          linesReceived=0;
+          mode = NEW_STEP_MODE;
           startLine = nextLineToBeAllocated;
           linesSent = linesPerWorker + (extraLines>0?1:0);
           extraLines--;
@@ -231,12 +281,17 @@ void distributor(streaming chanend c_in, server outInterface i_out, chanend from
           break;
       case workers[int j].send_line(uchar line[], int linenumber):
           memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
-          linesReceived++;
-          if(linesReceived==height)
-            linesReceived = -1;
+          mode++;
+          if(mode==height)
+            mode = STEP_COMPLETED_MODE;
           break;
-      case i_out.initialize_transaction():
+      case i_out.initialize_transaction() -> {int outheight, int outwidth}:
+        outheight = height;
+        outwidth = width;
         outputRequested = 1;
+        break;
+      case fromAcc.pause():
+        pauseRequested = 1;
         break;
     }
   }
@@ -281,33 +336,35 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
 {
   char outfname[] = OUTPUT_FILE; //put your output image path here
   int res;
-  uchar line[ IMWD ];
+  int height, width;
+  uchar line[MAXLINEBYTES];
 
   //Open PGM file
-  printf( "DataOutStream:Start...\n" );
 
+  delay_milliseconds(200);
 
   while(1){
     int pressed = toButtons.requestUserInput(1);
-    fromDistributor.initialize_transaction();
+    {height,width} = fromDistributor.initialize_transaction();
+    printf( "DataOutStream:Start...\n" );
     select {
       case fromDistributor.data_ready():
-        toLeds.send_pattern(2);
-        res = _openoutpgm( outfname, IMWD, IMHT );
+        toLeds.send_command(BLUE_LED_ON);
+        res = _openoutpgm( outfname, width, height );
         if( res ) {
           printf( "DataOutStream:Error opening %s\n.", outfname );
         }else {
           //Compile each line of the image and write the image line-by-line
-          for( int y = 0; y < IMHT; y++ ) {
+          for( int y = 0; y < height; y++ ) {
             fromDistributor.request_line(line, y);
-            for(int x = 0;x < IMWD;x++) {
-              uchar c =(uchar) (getBit(line,0,x,IMWD)*255);
+            for(int x = 0;x < width;x++) {
+              uchar c =(uchar) (getBit(line,0,x,width)*255);
               _writeoutbyte(c);
             }
           }
           _closeoutpgm();
           fromDistributor.end_transaction();
-          toLeds.send_pattern(0);
+          toLeds.send_command(BLUE_LED_OFF);
         }
         break;
     }
@@ -319,7 +376,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
 // Initialise and  read accelerometer, send first tilt event to channel
 //
 /////////////////////////////////////////////////////////////////////////////////////////
-void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
+void accelerometer(client interface i2c_master_if i2c, client accInterface toDist) {
   i2c_regop_res_t result;
   char status_data = 0;
   int tilted = 0;
@@ -350,8 +407,13 @@ void accelerometer(client interface i2c_master_if i2c, chanend toDist) {
     //send signal to distributor after first tilt
     if (!tilted) {
       if (x>30) {
-        tilted = 1 - tilted;
-        toDist <: 1;
+        tilted = 1;
+        toDist.pause();
+      }
+    }else {
+      if (x<5) {
+        tilted = 0;
+        toDist.unpause();
       }
     }
   }
@@ -366,21 +428,21 @@ int main(void) {
 
   i2c_master_if i2c[1];               //interface to accelerometer
 
-  chan c_control;
-  streaming chan c_inIO;       //extend your channel definitions here
   d2w i_d2w[NUMBEROFWORKERSINTILE0];
-  ledControl i_ledControl[2];
-  buttonRequest i_buttonRequests[1];
+  ledControl i_ledControl[3];
+  buttonRequest i_buttonRequests[2];
   outInterface i_out;
+  inInterface i_in;
+  accInterface i_acc;
 
   par {
-    on tile[0]:buttonListener(buttons,i_buttonRequests,1);
+    on tile[0]:buttonListener(buttons,i_buttonRequests,2);
     on tile[0]:i2c_master(i2c, 1, p_scl, p_sda, 10);   //server thread providing accelerometer data
-    on tile[0]:accelerometer(i2c[0],c_control);        //client thread reading accelerometer data
-    on tile[0]:showLEDs(leds,i_ledControl,2);
-    on tile[0]:DataInStream(c_inIO, i_ledControl[0]);          //thread to read in a PGM image
-    on tile[0]:DataOutStream(i_out, i_ledControl[1], i_buttonRequests[0]);       //thread to write out a PGM image
-    on tile[0]:distributor(c_inIO, i_out, c_control, i_d2w, NUMBEROFWORKERSINTILE0);//thread to coordinate work on image
+    on tile[0]:accelerometer(i2c[0],i_acc);        //client thread reading accelerometer data
+    on tile[0]:showLEDs(leds,i_ledControl,3);
+    on tile[0]:DataInStream(i_in, i_ledControl[0], i_buttonRequests[0]);          //thread to read in a PGM image
+    on tile[0]:DataOutStream(i_out, i_ledControl[1], i_buttonRequests[1]);       //thread to write out a PGM image
+    on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0);//thread to coordinate work on image
     par(int i=0 ; i<NUMBEROFWORKERSINTILE0 ; i++){
       on tile[0]:worker(i, i_d2w[i]);
     }
