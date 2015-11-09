@@ -23,7 +23,7 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define FXOS8700EQ_OUT_Z_MSB 0x5
 #define FXOS8700EQ_OUT_Z_LSB 0x6
 
-#define NUMBEROFWORKERSINTILE0 1
+#define NUMBEROFWORKERSINTILE0 5
 #define NUMBEROFWORKERSINTILE1 7
 
 #define MAXLINEBYTES 250
@@ -404,7 +404,6 @@ void accelerometer(client interface i2c_master_if i2c, client accInterface toDis
     //get new x-axis tilt value
     int x = read_acceleration(i2c, FXOS8700EQ_OUT_X_MSB);
 
-    //send signal to distributor after first tilt
     if (!tilted) {
       if (x>30) {
         tilted = 1;
