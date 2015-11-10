@@ -44,7 +44,7 @@ typedef interface d2w {
                                         //line count expected to be processed
                                         //total column count
 
-  void send_line(uchar line[],int linenumber);
+  void send_line(uchar line[],int linenumber, int aliveCells);
 
   [[notification]]
   slave void data_ready(void);
@@ -159,12 +159,12 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
   char infname[] = INPUT_FILE;     //put your input image path here
   int res;
   uchar line[MAXLINEBYTES];
-  printf( "DataInStream: Start...\n" );
 
   while(1){
     select{
       case fromDistributor.initialize_transaction() -> {int height, int width}:
-        fromButtons.requestUserInput(2);
+        fromButtons.requestUserInput(1);
+        printf( "DataInStream: Start...\n" );
         //Open PGM file
         res = _openinpgm( infname );
         if( res ) {
@@ -209,14 +209,38 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   int linesPerWorker;
   int extraLines;
   int nextLineToBeAllocated;
+  int linesReceived = 0;
+  long aliveCellsThisStep = 0;
+  long round = 0;
   uint8_t outputRequested = 0;
   uint8_t pauseRequested = 0;
 
+  timer tmr;
+  float duration = 0;
+  long time;
+
+  uint8_t mostEfficientN = 0;
+  uint8_t currentN = 0;
+  unsigned long maxSpeedAchieved = 0;
+  uint8_t roundsProcessedWithN = 0;
+  float lastDuration = 0;
+  uint8_t bestFound = 0;
+
+  printf("Press button 1 to start.\n");
 
   //Read in and do something with your image values..
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
   {height,width} = toDataIn.initialize_transaction();
+  printf("Image size = %dx%d\n", height, width );
+  printf("Calculating minimum possible cores...\n");
+  do {
+    currentN++;
+    mostEfficientN++;
+    linesPerWorker = height / currentN;
+    extraLines     = height % currentN;
+  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>PERWORKERMEMORYINTILE0);
+  printf("Minimum possible cores: %d\n", currentN);
   select{
     case toDataIn.user_input_received():
       for( int y = 0; y < height; y++ ) {
@@ -226,45 +250,74 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       break;
   }
 
-  //Starting up and wait for tilting of the xCore-200 Explorer
-  printf( "ProcessImage:Start, size = %dx%d\n", height, width );
-  printf( "Waiting for Board Tilt...\n" );
-//  fromAcc :> int value;
-  printf( "Processing...\n" );
+  printf("Processing...\n");
+  printf("Adjusting number of workers for highest possible speed...\n");
+  printf("Pausing and Output requests are temporarily disabled...\n");
 
+  tmr :> time;
   while(1) {
     if(mode == STEP_COMPLETED_MODE){
       toLeds.send_command(TOGGLE_SEP_GREEN);
-      if(outputRequested)
+      if(outputRequested){
         i_out.data_ready();
-      while(outputRequested){
-        select{
-          case i_out.request_line(uchar line[], int linenumber):
-              memcpy(line,data+lines2bytes(linenumber,width),lines2bytes(1,width));
-              break;
-          case i_out.end_transaction():
-            outputRequested = 0;
-            break;
+        while(outputRequested){
+          select{
+            case i_out.request_line(uchar line[], int linenumber):
+                memcpy(line,data+lines2bytes(linenumber,width),lines2bytes(1,width));
+                break;
+            case i_out.end_transaction():
+                tmr :> time;
+                outputRequested = 0;
+                break;
+          }
         }
       }
-      while(pauseRequested){
-        printf("PAUSED!\n");
+      if (pauseRequested){
+        printReport(round,duration,aliveCellsThisStep, width*height);
         toLeds.send_command(RED_LED_ON);
         select {
           case fromAcc.unpause():
             pauseRequested = 0;
+            tmr :> time;
             toLeds.send_command(RED_LED_OFF);
             break;
         }
       }
-      linesPerWorker = height / NUMBEROFWORKERSINTILE0;
-      extraLines     = height % NUMBEROFWORKERSINTILE0;
+      linesPerWorker = height / currentN;
+      extraLines     = height % currentN;
       nextLineToBeAllocated = 0;
-      for(int i = 0;i<n;i++){
+      linesReceived = 0;
+      aliveCellsThisStep = 0;
+      round++;
+      for(int i = 0;i<currentN;i++){
         workers[i].data_ready();
+      }
+
+      roundsProcessedWithN++;
+      if(roundsProcessedWithN==200 && !bestFound){
+        double roundsPerSecond = 200.0 / (duration-lastDuration);
+        unsigned long cellsPerSecond = roundsPerSecond * width * height;
+        if(cellsPerSecond > maxSpeedAchieved){
+          maxSpeedAchieved = cellsPerSecond;
+          mostEfficientN = currentN;
+        }
+        lastDuration = duration;
+        roundsProcessedWithN = 1;
+        if(currentN==n){
+          bestFound = 1;
+          currentN = mostEfficientN;
+          printf("Most efficient N found: %d!\n",mostEfficientN);
+          printf("Pausing and Output requests are now enabled...\n");
+        }else{
+          currentN++;
+        }
       }
     }
     select {
+      case tmr when timerafter(time) :> void:
+          time += 50000000;
+          duration += 0.5;
+          break;
       case workers[int j].get_data(uchar part[])
           -> {int startLine, int linesSent, int totalCols, int totalRows}:
           mode = NEW_STEP_MODE;
@@ -279,24 +332,23 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           memcpy(part,data+lines2bytes(mod(startLine-1,totalRows),width),lines2bytes(1,width));
           memcpy(part+lines2bytes(linesSent+1,width),data+lines2bytes(mod(startLine+linesSent,totalRows),width),lines2bytes(1,width));
           break;
-      case workers[int j].send_line(uchar line[], int linenumber):
+      case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
-          mode++;
-          if(mode==height)
+          linesReceived++;
+          aliveCellsThisStep += aliveCells;
+          if(linesReceived==height)
             mode = STEP_COMPLETED_MODE;
           break;
-      case i_out.initialize_transaction() -> {int outheight, int outwidth}:
-        outheight = height;
-        outwidth = width;
-        outputRequested = 1;
-        break;
-      case fromAcc.pause():
-        pauseRequested = 1;
-        break;
+      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth}:
+          outheight = height;
+          outwidth = width;
+          outputRequested = 1;
+          break;
+      case bestFound => fromAcc.pause():
+          pauseRequested = 1;
+          break;
     }
   }
-
-  printf( "\nOne processing round completed...\n" );
 }
 
 void worker(int id, client d2w distributor){
@@ -315,13 +367,15 @@ void worker(int id, client d2w distributor){
 
     //PROCESS HERE AND COMMUNICATE EACH LINE
     for(int x=1; x<=linesReceived;x++){
+      int aliveCells = 0;
       for(int y=0; y<totalCols;y++){
         uchar itself = getBit(part, x, y, totalCols);
         int neighbours = countAliveNeighbours(part, x, y, totalCols);
         uchar res = decide(neighbours, itself);
+        aliveCells += (res?1:0);
         changeBit(line, 0, y, res, totalCols);
       }
-      distributor.send_line(line,startLine+x-1);
+      distributor.send_line(line,startLine+x-1,aliveCells);
     }
   }
 
@@ -344,7 +398,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
   delay_milliseconds(200);
 
   while(1){
-    int pressed = toButtons.requestUserInput(1);
+    int pressed = toButtons.requestUserInput(2);
     {height,width} = fromDistributor.initialize_transaction();
     printf( "DataOutStream:Start...\n" );
     select {
@@ -405,7 +459,7 @@ void accelerometer(client interface i2c_master_if i2c, client accInterface toDis
     int x = read_acceleration(i2c, FXOS8700EQ_OUT_X_MSB);
 
     if (!tilted) {
-      if (x>30) {
+      if (x>70) {
         tilted = 1;
         toDist.pause();
       }

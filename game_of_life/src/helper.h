@@ -8,8 +8,8 @@
 #ifndef HELPER_H_
 #define HELPER_H_
 
-#define STEP_COMPLETED_MODE -1
-#define NEW_STEP_MODE        0
+#define STEP_COMPLETED_MODE  0xAA
+#define NEW_STEP_MODE        0xAB
 
 #define NO_LED         0
 #define SEP_GREEN_LED  1
@@ -68,6 +68,21 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
     }
   }
   return res - itself;
+}
+
+void printReport(long round, float duration, int aliveCells, int totalCells){
+  unsigned int minutes;
+  unsigned int seconds;
+  minutes = (int)duration / 60;
+  seconds = (int)duration % 60;
+  double roundsPerSecond = ((double)round) / duration;
+  unsigned long cellsPerSecond = roundsPerSecond * totalCells;
+  printf("----------------STATUS REPORT----------------\n");
+  printf("| Rounds processed: %-24u|\n",round);
+  printf("| Processing time : %02dm %02ds%18|\n", minutes, seconds);
+  printf("| # of alive cells: %-24u|\n",aliveCells);
+  printf("| Processing speed: %010u cells/sec%5|\n",cellsPerSecond);
+  printf("---------------------------------------------\n");
 }
 
 #endif /* HELPER_H_ */
