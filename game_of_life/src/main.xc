@@ -28,9 +28,10 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 
 #define MAXLINEBYTES 250
 #define CHUNK0       95*1024
+#define CHUNK1       95*1024
 
 #define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
-#define PERWORKERMEMORYINTILE1 CHUNK0/NUMBEROFWORKERSINTILE1
+#define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
 #define INPUT_FILE "test.pgm"
 #define OUTPUT_FILE "testout.pgm"
@@ -220,7 +221,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   long time;
 
   uint8_t mostEfficientN = 0;
-  uint8_t currentN = 0;
+  uint8_t currentN = NUMBEROFWORKERSINTILE0+1;
   unsigned long maxSpeedAchieved = 0;
   uint8_t roundsProcessedWithN = 0;
   float lastDuration = 0;
@@ -234,12 +235,12 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   {height,width} = toDataIn.initialize_transaction();
   printf("Image size = %dx%d\n", height, width );
   printf("Calculating minimum possible cores...\n");
-  do {
+/*  do {
     currentN++;
     mostEfficientN++;
     linesPerWorker = height / currentN;
     extraLines     = height % currentN;
-  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>PERWORKERMEMORYINTILE0);
+  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>PERWORKERMEMORYINTILE0);*/
   printf("Minimum possible cores: %d\n", currentN);
   select{
     case toDataIn.user_input_received():
@@ -293,7 +294,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         workers[i].data_ready();
       }
 
-      roundsProcessedWithN++;
+/*      roundsProcessedWithN++;
       if(roundsProcessedWithN==200 && !bestFound){
         double roundsPerSecond = 200.0 / (duration-lastDuration);
         unsigned long cellsPerSecond = roundsPerSecond * width * height;
@@ -311,7 +312,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         }else{
           currentN++;
         }
-      }
+      }*/
     }
     select {
       case tmr when timerafter(time) :> void:
@@ -351,8 +352,50 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   }
 }
 
-void worker(int id, client d2w distributor){
-  uchar part[PERWORKERMEMORYINTILE0];
+void distributor_tile_one(client d2w distr, server d2w workers[n], unsigned n) {
+  uchar data[CHUNK1];
+
+  //Read in and do something with your image values..
+  //This just inverts every pixel, but you should
+  //change the image according to the "Game of Life"
+
+  while(1) {
+    select {
+      case workers[int j].get_data(uchar part[])
+          -> {int startLine, int linesSent, int totalCols, int totalRows}:
+          mode = NEW_STEP_MODE;
+          startLine = nextLineToBeAllocated;
+          linesSent = linesPerWorker + (extraLines>0?1:0);
+          extraLines--;
+          nextLineToBeAllocated = startLine + linesSent;
+          totalCols = width;
+          totalRows = height;
+          //refactor this part
+          memcpy(part+lines2bytes(1,width),data+lines2bytes(startLine,width),lines2bytes(linesSent,width));
+          memcpy(part,data+lines2bytes(mod(startLine-1,totalRows),width),lines2bytes(1,width));
+          memcpy(part+lines2bytes(linesSent+1,width),data+lines2bytes(mod(startLine+linesSent,totalRows),width),lines2bytes(1,width));
+          break;
+      case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
+          memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
+          linesReceived++;
+          aliveCellsThisStep += aliveCells;
+          if(linesReceived==height)
+            mode = STEP_COMPLETED_MODE;
+          break;
+      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth}:
+          outheight = height;
+          outwidth = width;
+          outputRequested = 1;
+          break;
+      case bestFound => fromAcc.pause():
+          pauseRequested = 1;
+          break;
+    }
+  }
+}
+
+void worker(int id, client d2w distributor, static const int WORKERMEMORY){
+  uchar part[WORKERMEMORY];
   uchar line[MAXLINEBYTES];
   int startLine = 0;
   int linesReceived = 0;
@@ -481,7 +524,8 @@ int main(void) {
 
   i2c_master_if i2c[1];               //interface to accelerometer
 
-  d2w i_d2w[NUMBEROFWORKERSINTILE0];
+  d2w i_d2w[NUMBEROFWORKERSINTILE0+1];
+  d2w i_d2w_tile_one[NUMBEROFWORKERSINTILE1];
   ledControl i_ledControl[3];
   buttonRequest i_buttonRequests[2];
   outInterface i_out;
@@ -495,9 +539,14 @@ int main(void) {
     on tile[0]:showLEDs(leds,i_ledControl,3);
     on tile[0]:DataInStream(i_in, i_ledControl[0], i_buttonRequests[0]);          //thread to read in a PGM image
     on tile[0]:DataOutStream(i_out, i_ledControl[1], i_buttonRequests[1]);       //thread to write out a PGM image
-    on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0);//thread to coordinate work on image
+    on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0+1);//thread to coordinate work on image
     par(int i=0 ; i<NUMBEROFWORKERSINTILE0 ; i++){
-      on tile[0]:worker(i, i_d2w[i]);
+      on tile[0]:worker(i, i_d2w[i],PERWORKERMEMORYINTILE0);
+    }
+
+    on tile[1]:distributor_tile_one(i_d2w[NUMBEROFWORKERSINTILE0],i_d2w_tile_one,NUMBEROFWORKERSINTILE1);
+    par(int i=0 ; i<NUMBEROFWORKERSINTILE1 ; i++){
+      on tile[1]:worker(i, i_d2w_tile_one[i],PERWORKERMEMORYINTILE1);
     }
 
   }
