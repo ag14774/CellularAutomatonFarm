@@ -26,14 +26,16 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define NUMBEROFWORKERSINTILE0 5
 #define NUMBEROFWORKERSINTILE1 7
 
+#define MIN_CELLS_FOR_TILE1    64*64
+
 #define MAXLINEBYTES 250
-#define CHUNK0       95*1024
-#define CHUNK1       95*1024
+#define CHUNK0       92*1024
+#define CHUNK1       112*1024
 
 #define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
-#define INPUT_FILE "test.pgm"
+#define INPUT_FILE  "test.pgm"
 #define OUTPUT_FILE "testout.pgm"
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
@@ -52,6 +54,26 @@ typedef interface d2w {
 
 } d2w;
 
+typedef interface d2d {
+  void get_data(uchar data[], int linesSent,
+                int totalCols, int totalRows);
+
+  int get_stats();
+
+  void exchange_ghosts(uchar data[]);
+
+  void set_workers_to(int numberOfWorkers);
+
+  [[clears_notification]]
+  void start_computation();
+
+  [[notification]]
+  slave void step_completed(void);
+
+  void get_line(uchar line[], int linenumber);
+
+} d2d;
+
 typedef interface ledControl {
   void send_command(int command);
 } ledControl;
@@ -65,7 +87,7 @@ typedef interface outInterface {
   void request_line(uchar line[],int linenumber);
 
   [[guarded]]
-  {int,int} initialize_transaction();
+  {int,int,uint8_t} initialize_transaction();
 
   [[notification]]
   slave void data_ready(void);
@@ -81,7 +103,7 @@ typedef interface inInterface {
   [[notification]]
   slave void user_input_received(void);
 
-  void request_line(uchar data[], int linenumber, int width);
+  void request_line(uchar data[], int linenumber, int width, uint8_t rotate);
 
   [[clears_notification]]
   void end_transaction();
@@ -169,7 +191,7 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         //Open PGM file
         res = _openinpgm( infname );
         if( res ) {
-          printf( "DataInStream: Error openening %s\n.", infname );
+          printf( "DataInStream: Error openening %s\n", infname );
           return;
         }
         height = _getheight();
@@ -177,10 +199,16 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         fromDistributor.user_input_received();
         toLeds.send_command(GREEN_LED_ON);
         break;
-      case fromDistributor.request_line(uchar data[], int linenumber, int width):
+      case fromDistributor.request_line(uchar data[], int linenumber, int width, uint8_t rotate):
         //Read image byte-by-byte and copy line to distributor
+        if(rotate)
+          _disable_buffering();
         for(int y=0;y<width;y++){
-          uchar byte = _readinbyte();
+          uchar byte;
+          if(rotate)
+            byte = _readinbyte_vert();
+          else
+            byte = _readinbyte();
           changeBit(line, 0, y, byte, width);
         }
         memcpy(data+lines2bytes(linenumber,width),line,lines2bytes(1,width));
@@ -202,15 +230,16 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
 //
 /////////////////////////////////////////////////////////////////////////////////////////
 void distributor(client inInterface toDataIn, server outInterface i_out, server accInterface fromAcc,
-                 client ledControl toLeds, server d2w workers[n], unsigned n) {
+                 client ledControl toLeds, server d2w workers[n], unsigned n, client d2d slaveDist) {
   uchar data[CHUNK0];
+  uchar lineBuffer[MAXLINEBYTES];
   int height;
   int width;
   int mode = STEP_COMPLETED_MODE;
   int linesPerWorker;
   int extraLines;
   int nextLineToBeAllocated;
-  int linesReceived = 0;
+  int linesUpdated = 0;
   long aliveCellsThisStep = 0;
   long round = 0;
   uint8_t outputRequested = 0;
@@ -220,12 +249,22 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   float duration = 0;
   long time;
 
-  uint8_t mostEfficientN = 0;
-  uint8_t currentN = NUMBEROFWORKERSINTILE0+1;
-  unsigned long maxSpeedAchieved = 0;
-  uint8_t roundsProcessedWithN = 0;
+  uint8_t workersInTile0_best;
+  uint8_t workersInTile0;
+  uint8_t workersInTile1_best;
+  uint8_t workersInTile1;
+  float maxSpeedAchieved = 99999;
+  int roundsProcessedWithThisSetup = -1;
   float lastDuration = 0;
   uint8_t bestFound = 0;
+
+  uint8_t rotate = 0;
+
+  //It's always beneficial to use both Tiles
+  uint8_t useTile1 = 1;
+  uint8_t availableWorkers = n;
+  int linesForD2 = 0;
+  int linesForD1 = 0;
 
   printf("Press button 1 to start.\n");
 
@@ -234,26 +273,75 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   //change the image according to the "Game of Life"
   {height,width} = toDataIn.initialize_transaction();
   printf("Image size = %dx%d\n", height, width );
-  printf("Calculating minimum possible cores...\n");
-/*  do {
-    currentN++;
-    mostEfficientN++;
-    linesPerWorker = height / currentN;
-    extraLines     = height % currentN;
-  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>PERWORKERMEMORYINTILE0);*/
-  printf("Minimum possible cores: %d\n", currentN);
+  if((height<16 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
+    rotate = 1;
+    printf("**************WARNING**************\n");
+    printf("The system has detected that the image provided has to be\n");
+    printf("rotated before processing can begin.\n");
+    printf("All I/O operations may be significantly slower!!!\n");
+    printf("***********************************\n");
+    unsigned int temp = height;
+    height = width;
+    width = temp;
+  }
+
+  int testRounds = keepWithinBounds(3000000/(width * height),5,2000);
+
+  if((height*width)>=MIN_CELLS_FOR_TILE1 || useTile1){
+    useTile1 = 1;
+    availableWorkers += NUMBEROFWORKERSINTILE1;
+  }
+
+  float ratio = 7.0;
+  do{
+    if(useTile1)
+      linesForD2 = (int) (ratio*(height / 12));
+    linesForD1 = height - linesForD2;
+    ratio = ratio - 0.1;
+  } while (lines2bytes(linesForD2+2,width)>CHUNK1 && ratio>=6.0);
+
+  workersInTile0 = calculateMinimumCores(PERWORKERMEMORYINTILE0, linesForD1, width);
+  workersInTile1 = calculateMinimumCores(PERWORKERMEMORYINTILE1, linesForD2, width);
+  if(workersInTile1>workersInTile0)
+    workersInTile0 = workersInTile1;
+  else
+    workersInTile1 = workersInTile0;
+  if(workersInTile0>NUMBEROFWORKERSINTILE0)
+    workersInTile0=NUMBEROFWORKERSINTILE0;
+  if(workersInTile1>NUMBEROFWORKERSINTILE1)
+    workersInTile1=NUMBEROFWORKERSINTILE1;
+  slaveDist.set_workers_to(workersInTile1);
+  workersInTile0_best = workersInTile0;
+  workersInTile1_best = workersInTile1;
+
   select{
     case toDataIn.user_input_received():
-      for( int y = 0; y < height; y++ ) {
-          toDataIn.request_line(data, y, width);
+      for( int y = 1; y <= height; y++ ) {
+          int j;
+          if(y<=linesForD2)
+            j = y;
+          else
+            j = y-linesForD2;
+          toDataIn.request_line(data, j, width, rotate);
+          //STARTLINE FOR TILE 0 = linesForD2
+          if(y==linesForD2)
+            slaveDist.get_data(data, linesForD2, width, height);
       }
       toDataIn.end_transaction();
       break;
   }
 
+  if(useTile1) {
+    slaveDist.exchange_ghosts(data);
+  }
+  else {
+    memcpy(data,data+lines2bytes(linesForD1,width),lines2bytes(1,width));
+    memcpy(data+lines2bytes(linesForD1+1,width),data+lines2bytes(1,width),lines2bytes(1,width));
+  }
+
   printf("Processing...\n");
-  printf("Adjusting number of workers for highest possible speed...\n");
-  printf("Pausing and Output requests are temporarily disabled...\n");
+//  printf("Adjusting number of workers for highest possible speed...\n");
+//  printf("Pausing and Output requests are temporarily disabled...\n");
 
   tmr :> time;
   while(1) {
@@ -264,7 +352,13 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         while(outputRequested){
           select{
             case i_out.request_line(uchar line[], int linenumber):
-                memcpy(line,data+lines2bytes(linenumber,width),lines2bytes(1,width));
+                if(linenumber<linesForD2){
+                  slaveDist.get_line(lineBuffer,linenumber);
+                  memcpy(line, lineBuffer, lines2bytes(1,width));
+                }
+                else{
+                  memcpy(line,data+lines2bytes(linenumber-linesForD2+1,width),lines2bytes(1,width));
+                }
                 break;
             case i_out.end_transaction():
                 tmr :> time;
@@ -274,8 +368,10 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         }
       }
       if (pauseRequested){
-        printReport(round,duration,aliveCellsThisStep, width*height);
         toLeds.send_command(RED_LED_ON);
+        if(useTile1)
+          aliveCellsThisStep = aliveCellsThisStep + slaveDist.get_stats();
+        printReport(round,duration,aliveCellsThisStep, width*height);
         select {
           case fromAcc.unpause():
             pauseRequested = 0;
@@ -284,65 +380,94 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
             break;
         }
       }
-      linesPerWorker = height / currentN;
-      extraLines     = height % currentN;
-      nextLineToBeAllocated = 0;
-      linesReceived = 0;
+      linesPerWorker = linesForD1 / workersInTile0;
+      extraLines     = linesForD1 % workersInTile0;
+      nextLineToBeAllocated = 1;
+      linesUpdated = 0;
       aliveCellsThisStep = 0;
       round++;
-      for(int i = 0;i<currentN;i++){
+      if(useTile1)
+        slaveDist.start_computation();
+      for(int i = 0;i<workersInTile0;i++){
         workers[i].data_ready();
       }
 
-/*      roundsProcessedWithN++;
-      if(roundsProcessedWithN==200 && !bestFound){
-        double roundsPerSecond = 200.0 / (duration-lastDuration);
-        unsigned long cellsPerSecond = roundsPerSecond * width * height;
-        if(cellsPerSecond > maxSpeedAchieved){
-          maxSpeedAchieved = cellsPerSecond;
-          mostEfficientN = currentN;
+      roundsProcessedWithThisSetup++;
+      if(roundsProcessedWithThisSetup==testRounds && !bestFound){
+        float durationWithThisSetup = (duration-lastDuration);
+        if(durationWithThisSetup <= maxSpeedAchieved){
+          maxSpeedAchieved = durationWithThisSetup;
+          workersInTile0_best = workersInTile0;
+          workersInTile1_best = workersInTile1;
         }
         lastDuration = duration;
-        roundsProcessedWithN = 1;
-        if(currentN==n){
+        roundsProcessedWithThisSetup = 0;
+        if((workersInTile0+workersInTile1) == availableWorkers){
           bestFound = 1;
-          currentN = mostEfficientN;
-          printf("Most efficient N found: %d!\n",mostEfficientN);
+          workersInTile0 = workersInTile0_best;
+          workersInTile1 = workersInTile1_best;
+          slaveDist.set_workers_to(workersInTile1);
+          printf("Most efficient number of workers found for tile 0: %d!\n",workersInTile0);
+          printf("Most efficient number of workers found for tile 1: %d!\n",workersInTile1);
           printf("Pausing and Output requests are now enabled...\n");
+          fflush(stdout);
         }else{
-          currentN++;
+          //************* REIMPLEMENT THIS PART***************
+          if((workersInTile0<NUMBEROFWORKERSINTILE0) && (workersInTile0<=workersInTile1))
+            workersInTile0++;
+          if(workersInTile0-workersInTile1>=1){
+            workersInTile1++;
+            slaveDist.set_workers_to(workersInTile1);
+          }
+          else if((workersInTile0==NUMBEROFWORKERSINTILE0)&&(workersInTile1<NUMBEROFWORKERSINTILE1)){
+            workersInTile1++;
+            slaveDist.set_workers_to(workersInTile1);
+          }
+          //**************************************************
         }
-      }*/
+        tmr :> time;
+      }
+      mode = NEW_STEP_MODE;
     }
+    [[ordered]]
     select {
       case tmr when timerafter(time) :> void:
           time += 50000000;
           duration += 0.5;
           break;
       case workers[int j].get_data(uchar part[])
-          -> {int startLine, int linesSent, int totalCols, int totalRows}:
-          mode = NEW_STEP_MODE;
-          startLine = nextLineToBeAllocated;
-          linesSent = linesPerWorker + (extraLines>0?1:0);
+          -> {int start_line, int lines_sent, int totalCols, int totalRows}:
+          start_line = nextLineToBeAllocated;
+          lines_sent = linesPerWorker + (extraLines>0?1:0);
           extraLines--;
-          nextLineToBeAllocated = startLine + linesSent;
+          nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
           totalRows = height;
-          //refactor this part
-          memcpy(part+lines2bytes(1,width),data+lines2bytes(startLine,width),lines2bytes(linesSent,width));
-          memcpy(part,data+lines2bytes(mod(startLine-1,totalRows),width),lines2bytes(1,width));
-          memcpy(part+lines2bytes(linesSent+1,width),data+lines2bytes(mod(startLine+linesSent,totalRows),width),lines2bytes(1,width));
+          memcpy(part,data+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
-          linesReceived++;
+          linesUpdated++;
           aliveCellsThisStep += aliveCells;
-          if(linesReceived==height)
+          if(linesUpdated==linesForD1){
+            if(useTile1) {
+              select{
+                case slaveDist.step_completed():
+                  slaveDist.exchange_ghosts(data);
+                  break;
+              }
+            }
+            else {
+              memcpy(data,data+lines2bytes(linesForD1,width),lines2bytes(1,width));
+              memcpy(data+lines2bytes(linesForD1+1,width),data+lines2bytes(1,width),lines2bytes(1,width));
+            }
             mode = STEP_COMPLETED_MODE;
+          }
           break;
-      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth}:
+      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uint8_t rotateEnable}:
           outheight = height;
           outwidth = width;
+          rotateEnable = rotate;
           outputRequested = 1;
           break;
       case bestFound => fromAcc.pause():
@@ -352,43 +477,69 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   }
 }
 
-void distributor_tile_one(client d2w distr, server d2w workers[n], unsigned n) {
-  uchar data[CHUNK1];
+void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned n) {
+  uchar half[CHUNK1];
+  int linesReceived, height, width;
 
-  //Read in and do something with your image values..
-  //This just inverts every pixel, but you should
-  //change the image according to the "Game of Life"
+  int linesPerWorker;
+  int extraLines;
+  int nextLineToBeAllocated;
+  int linesUpdated = 0;
+  long aliveCellsThisStep = 0;
+
+  uint8_t currentWorkers = 1;
 
   while(1) {
     select {
+      case masterDist.set_workers_to(int numberOfWorkers):
+          currentWorkers = numberOfWorkers;
+          break;
+      case masterDist.get_data(uchar data[], int lines_sent, int totalCols, int totalRows):
+          linesReceived = lines_sent;
+          width = totalCols;
+          height = totalRows;
+          memcpy(half+lines2bytes(1,width), data+lines2bytes(1,width), lines2bytes(linesReceived,width));
+          masterDist.step_completed();
+          break;
+      case masterDist.exchange_ghosts(uchar data[]):
+          memcpy(half, data+lines2bytes(height-linesReceived,width), lines2bytes(1,width));
+          memcpy(half+lines2bytes(linesReceived+1,width), data+lines2bytes(1, width), lines2bytes(1,width));
+          memcpy(data, half+lines2bytes(linesReceived,width), lines2bytes(1,width));
+          memcpy(data+lines2bytes(height-linesReceived+1,width), half+lines2bytes(1,width), lines2bytes(1,width));
+          break;
+      case masterDist.start_computation():
+          //********************** NOTIFY WORKERS AND INITIALIZE ***************************
+          for(int i = 0; i<currentWorkers ;i++){
+            workers[i].data_ready();
+          }
+          nextLineToBeAllocated = 1;
+          linesPerWorker = linesReceived / currentWorkers;
+          extraLines = linesReceived % currentWorkers;
+          linesUpdated = 0;
+          aliveCellsThisStep = 0;
+          break;
+      case masterDist.get_line(uchar line[], int linenumber):
+          memcpy(line, half+lines2bytes(linenumber+1,width), lines2bytes(1,width));
+          break;
+      case masterDist.get_stats() -> {int aliveCells}:
+          aliveCells = aliveCellsThisStep;
+          break;
       case workers[int j].get_data(uchar part[])
-          -> {int startLine, int linesSent, int totalCols, int totalRows}:
-          mode = NEW_STEP_MODE;
-          startLine = nextLineToBeAllocated;
-          linesSent = linesPerWorker + (extraLines>0?1:0);
+          -> {int start_line, int lines_sent, int totalCols, int totalRows}:
+          start_line = nextLineToBeAllocated;
+          lines_sent = linesPerWorker + (extraLines>0?1:0);
           extraLines--;
-          nextLineToBeAllocated = startLine + linesSent;
+          nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
           totalRows = height;
-          //refactor this part
-          memcpy(part+lines2bytes(1,width),data+lines2bytes(startLine,width),lines2bytes(linesSent,width));
-          memcpy(part,data+lines2bytes(mod(startLine-1,totalRows),width),lines2bytes(1,width));
-          memcpy(part+lines2bytes(linesSent+1,width),data+lines2bytes(mod(startLine+linesSent,totalRows),width),lines2bytes(1,width));
+          memcpy(part,half+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
-          memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
-          linesReceived++;
+          memcpy(half+lines2bytes(linenumber,width), line, lines2bytes(1,width));
+          linesUpdated++;
           aliveCellsThisStep += aliveCells;
-          if(linesReceived==height)
-            mode = STEP_COMPLETED_MODE;
-          break;
-      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth}:
-          outheight = height;
-          outwidth = width;
-          outputRequested = 1;
-          break;
-      case bestFound => fromAcc.pause():
-          pauseRequested = 1;
+          if(linesUpdated==linesReceived)
+            masterDist.step_completed();
           break;
     }
   }
@@ -434,6 +585,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
   char outfname[] = OUTPUT_FILE; //put your output image path here
   int res;
   int height, width;
+  uint8_t rotate = 0;
   uchar line[MAXLINEBYTES];
 
   //Open PGM file
@@ -442,12 +594,15 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
 
   while(1){
     int pressed = toButtons.requestUserInput(2);
-    {height,width} = fromDistributor.initialize_transaction();
+    {height,width,rotate} = fromDistributor.initialize_transaction();
     printf( "DataOutStream:Start...\n" );
     select {
       case fromDistributor.data_ready():
         toLeds.send_command(BLUE_LED_ON);
-        res = _openoutpgm( outfname, width, height );
+        if(rotate)
+          res = _openoutpgm( outfname, height, width );
+        else
+          res = _openoutpgm( outfname, width, height );
         if( res ) {
           printf( "DataOutStream:Error opening %s\n.", outfname );
         }else {
@@ -456,7 +611,10 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
             fromDistributor.request_line(line, y);
             for(int x = 0;x < width;x++) {
               uchar c =(uchar) (getBit(line,0,x,width)*255);
-              _writeoutbyte(c);
+              if(rotate)
+                _writeoutbyte_vert(c);
+              else
+                _writeoutbyte(c);
             }
           }
           _closeoutpgm();
@@ -524,8 +682,9 @@ int main(void) {
 
   i2c_master_if i2c[1];               //interface to accelerometer
 
-  d2w i_d2w[NUMBEROFWORKERSINTILE0+1];
+  d2w i_d2w[NUMBEROFWORKERSINTILE0];
   d2w i_d2w_tile_one[NUMBEROFWORKERSINTILE1];
+  d2d master2slave;
   ledControl i_ledControl[3];
   buttonRequest i_buttonRequests[2];
   outInterface i_out;
@@ -539,12 +698,12 @@ int main(void) {
     on tile[0]:showLEDs(leds,i_ledControl,3);
     on tile[0]:DataInStream(i_in, i_ledControl[0], i_buttonRequests[0]);          //thread to read in a PGM image
     on tile[0]:DataOutStream(i_out, i_ledControl[1], i_buttonRequests[1]);       //thread to write out a PGM image
-    on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0+1);//thread to coordinate work on image
+    on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0, master2slave);//thread to coordinate work on image
     par(int i=0 ; i<NUMBEROFWORKERSINTILE0 ; i++){
       on tile[0]:worker(i, i_d2w[i],PERWORKERMEMORYINTILE0);
     }
 
-    on tile[1]:distributor_tile_one(i_d2w[NUMBEROFWORKERSINTILE0],i_d2w_tile_one,NUMBEROFWORKERSINTILE1);
+    on tile[1]:distributor_tile_one(master2slave, i_d2w_tile_one, NUMBEROFWORKERSINTILE1);
     par(int i=0 ; i<NUMBEROFWORKERSINTILE1 ; i++){
       on tile[1]:worker(i, i_d2w_tile_one[i],PERWORKERMEMORYINTILE1);
     }

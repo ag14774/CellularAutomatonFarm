@@ -30,11 +30,12 @@
 
 #include "bitArray.h"
 
-int mod(int a, int b){
-  int res=a%b;
-  if(res<0)
-    res += b;
-  return res;
+int keepWithinBounds(int num, int low, int high){
+  if(num>high)
+    return high;
+  if(num<low)
+    return low;
+  return num;
 }
 
 uchar decide(int aliveNeighbours, uchar itselfAlive){
@@ -68,6 +69,21 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
     }
   }
   return res - itself;
+}
+
+uint8_t calculateMinimumCores(unsigned int memoryPerWorker, unsigned int lines, unsigned int width){
+  if(lines == 0)
+    return 0;
+  uint8_t n = 0;
+  unsigned int linesPerWorker;
+  unsigned int extraLines;
+  do {
+      n++;
+      linesPerWorker = lines / n;
+      extraLines     = lines % n;
+  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>memoryPerWorker);
+//  printf("Minimum possible cores: %d\n", n);
+  return n;
 }
 
 void printReport(long round, float duration, int aliveCells, int totalCells){
