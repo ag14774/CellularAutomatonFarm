@@ -25,6 +25,14 @@ void nullifyExtraBits(){
 }
 */
 
+int mod(int a, int b){
+  int result = a%b;
+  if(result<0){
+    return result+b;
+  }
+  return result;
+}
+
 void setBit(uchar A[], int r, int c, int WIDTH){
   size_t szc = sizeof(uchar)*8;
   size_t bytesPerLine = (WIDTH + szc - 1) / szc;

@@ -29,8 +29,8 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define MIN_CELLS_FOR_TILE1    64*64
 
 #define MAXLINEBYTES 250
-#define CHUNK0       92*1024
-#define CHUNK1       112*1024
+#define CHUNK0       80*1024 //92
+#define CHUNK1       80*1024 //112
 
 #define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
@@ -43,7 +43,7 @@ on tile[0] : out port leds = XS1_PORT_4F;   //port to access xCore-200 LEDs
 
 typedef interface d2w {
   [[clears_notification]]
-  {int,int,int,int} get_data(uchar part[]); //returns startline to be used as base pointer
+  {int,int,int,uchar} get_data(uchar part[]); //returns startline to be used as base pointer
                                         //line count expected to be processed
                                         //total column count
 
@@ -65,7 +65,7 @@ typedef interface d2d {
   void set_workers_to(int numberOfWorkers);
 
   [[clears_notification]]
-  void start_computation();
+  void start_computation(uchar speedBoost);
 
   [[notification]]
   slave void step_completed(void);
@@ -87,7 +87,7 @@ typedef interface outInterface {
   void request_line(uchar line[],int linenumber);
 
   [[guarded]]
-  {int,int,uint8_t} initialize_transaction();
+  {int,int,uchar} initialize_transaction();
 
   [[notification]]
   slave void data_ready(void);
@@ -103,7 +103,7 @@ typedef interface inInterface {
   [[notification]]
   slave void user_input_received(void);
 
-  void request_line(uchar data[], int linenumber, int width, uint8_t rotate);
+  void request_line(uchar data[], int linenumber, int width, uchar rotate);
 
   [[clears_notification]]
   void end_transaction();
@@ -199,7 +199,7 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         fromDistributor.user_input_received();
         toLeds.send_command(GREEN_LED_ON);
         break;
-      case fromDistributor.request_line(uchar data[], int linenumber, int width, uint8_t rotate):
+      case fromDistributor.request_line(uchar data[], int linenumber, int width, uchar rotate):
         //Read image byte-by-byte and copy line to distributor
         if(rotate)
           _disable_buffering();
@@ -242,27 +242,27 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
   long round = 0;
-  uint8_t outputRequested = 0;
-  uint8_t pauseRequested = 0;
+  uchar outputRequested = 0;
+  uchar pauseRequested = 0;
 
   timer tmr;
   float duration = 0;
   long time;
 
-  uint8_t workersInTile0_best;
-  uint8_t workersInTile0;
-  uint8_t workersInTile1_best;
-  uint8_t workersInTile1;
+  uchar workersInTile0_best;
+  uchar workersInTile0;
+  uchar workersInTile1_best;
+  uchar workersInTile1;
   float maxSpeedAchieved = 99999;
   int roundsProcessedWithThisSetup = -1;
   float lastDuration = 0;
-  uint8_t bestFound = 0;
+  uchar bestFound = 0;
 
-  uint8_t rotate = 0;
+  uchar rotate = 0;
 
   //It's always beneficial to use both Tiles
-  uint8_t useTile1 = 1;
-  uint8_t availableWorkers = n;
+  uchar useTile1 = 1;
+  uchar availableWorkers = n;
   int linesForD2 = 0;
   int linesForD1 = 0;
 
@@ -273,7 +273,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   //change the image according to the "Game of Life"
   {height,width} = toDataIn.initialize_transaction();
   printf("Image size = %dx%d\n", height, width );
-  if((height<16 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
+  if((height<10 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
     rotate = 1;
     printf("**************WARNING**************\n");
     printf("The system has detected that the image provided has to be\n");
@@ -286,7 +286,6 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   }
 
   int testRounds = keepWithinBounds(3000000/(width * height),5,2000);
-
   if((height*width)>=MIN_CELLS_FOR_TILE1 || useTile1){
     useTile1 = 1;
     availableWorkers += NUMBEROFWORKERSINTILE1;
@@ -387,7 +386,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       aliveCellsThisStep = 0;
       round++;
       if(useTile1)
-        slaveDist.start_computation();
+        slaveDist.start_computation(bestFound);
       for(int i = 0;i<workersInTile0;i++){
         workers[i].data_ready();
       }
@@ -436,13 +435,13 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           duration += 0.5;
           break;
       case workers[int j].get_data(uchar part[])
-          -> {int start_line, int lines_sent, int totalCols, int totalRows}:
+          -> {int start_line, int lines_sent, int totalCols, uchar speedBoost}:
+          speedBoost = bestFound;
           start_line = nextLineToBeAllocated;
           lines_sent = linesPerWorker + (extraLines>0?1:0);
           extraLines--;
           nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
-          totalRows = height;
           memcpy(part,data+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
@@ -464,7 +463,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
             mode = STEP_COMPLETED_MODE;
           }
           break;
-      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uint8_t rotateEnable}:
+      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uchar rotateEnable}:
           outheight = height;
           outwidth = width;
           rotateEnable = rotate;
@@ -486,8 +485,9 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
   int nextLineToBeAllocated;
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
+  uchar speedBoost = 0;
 
-  uint8_t currentWorkers = 1;
+  uchar currentWorkers = 1;
 
   while(1) {
     select {
@@ -507,7 +507,8 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
           memcpy(data, half+lines2bytes(linesReceived,width), lines2bytes(1,width));
           memcpy(data+lines2bytes(height-linesReceived+1,width), half+lines2bytes(1,width), lines2bytes(1,width));
           break;
-      case masterDist.start_computation():
+      case masterDist.start_computation(uchar sb):
+          speedBoost = sb;
           //********************** NOTIFY WORKERS AND INITIALIZE ***************************
           for(int i = 0; i<currentWorkers ;i++){
             workers[i].data_ready();
@@ -525,13 +526,13 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
           aliveCells = aliveCellsThisStep;
           break;
       case workers[int j].get_data(uchar part[])
-          -> {int start_line, int lines_sent, int totalCols, int totalRows}:
+          -> {int start_line, int lines_sent, int totalCols, uchar sb}:
+          sb = speedBoost;
           start_line = nextLineToBeAllocated;
           lines_sent = linesPerWorker + (extraLines>0?1:0);
           extraLines--;
           nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
-          totalRows = height;
           memcpy(part,half+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
@@ -551,23 +552,46 @@ void worker(int id, client d2w distributor, static const int WORKERMEMORY){
   int startLine = 0;
   int linesReceived = 0;
   int totalCols = 0;
-  int totalRows = 0;
+  uchar speedBoost = 0;
   while(1){
+    speedBoost = 0;
     select {
       case distributor.data_ready():
-        {startLine,linesReceived,totalCols,totalRows} = distributor.get_data(part);
+        {startLine,linesReceived,totalCols,speedBoost} = distributor.get_data(part);
         break;
     }
 
     //PROCESS HERE AND COMMUNICATE EACH LINE
     for(int x=1; x<=linesReceived;x++){
       int aliveCells = 0;
+      if(speedBoost){
+        clearBit(line,0,0,totalCols);
+        clearBit(line,0,totalCols-1,totalCols);
+        uchar markedNext = 0;
+        for(int y=0; y<totalCols;y++){
+          uchar count = getBit(part, x, y, totalCols);
+          count += getBit(part, x-1, y, totalCols);
+          count += getBit(part, x+1, y, totalCols);
+          if(count == 0 && y!=totalCols-1 && !markedNext)
+            clearBit(line,0,y,totalCols);
+          markedNext = 0;
+          if(count>0)
+            setBit(line, 0, y, totalCols);
+          if(count>1){
+            setBit(line, 0, mod(y-1,totalCols), totalCols);
+            setBit(line, 0, mod(y+1,totalCols), totalCols);
+            markedNext = 1;
+          }
+        }
+      }
       for(int y=0; y<totalCols;y++){
-        uchar itself = getBit(part, x, y, totalCols);
-        int neighbours = countAliveNeighbours(part, x, y, totalCols);
-        uchar res = decide(neighbours, itself);
-        aliveCells += (res?1:0);
-        changeBit(line, 0, y, res, totalCols);
+        if(getBit(line,0,y,totalCols) || !speedBoost){
+          uchar itself = getBit(part, x, y, totalCols);
+          int neighbours = countAliveNeighbours(part, x, y, totalCols);
+          uchar res = decide(neighbours, itself);
+          aliveCells += (res?1:0);
+          changeBit(line, 0, y, res, totalCols);
+        }
       }
       distributor.send_line(line,startLine+x-1,aliveCells);
     }
@@ -585,7 +609,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
   char outfname[] = OUTPUT_FILE; //put your output image path here
   int res;
   int height, width;
-  uint8_t rotate = 0;
+  uchar rotate = 0;
   uchar line[MAXLINEBYTES];
 
   //Open PGM file
@@ -705,7 +729,7 @@ int main(void) {
 
     on tile[1]:distributor_tile_one(master2slave, i_d2w_tile_one, NUMBEROFWORKERSINTILE1);
     par(int i=0 ; i<NUMBEROFWORKERSINTILE1 ; i++){
-      on tile[1]:worker(i, i_d2w_tile_one[i],PERWORKERMEMORYINTILE1);
+      on tile[1]:worker(i+NUMBEROFWORKERSINTILE0, i_d2w_tile_one[i],PERWORKERMEMORYINTILE1);
     }
 
   }

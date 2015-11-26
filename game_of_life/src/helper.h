@@ -71,10 +71,10 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
   return res - itself;
 }
 
-uint8_t calculateMinimumCores(unsigned int memoryPerWorker, unsigned int lines, unsigned int width){
+uchar calculateMinimumCores(unsigned int memoryPerWorker, unsigned int lines, unsigned int width){
   if(lines == 0)
     return 0;
-  uint8_t n = 0;
+  uchar n = 0;
   unsigned int linesPerWorker;
   unsigned int extraLines;
   do {
