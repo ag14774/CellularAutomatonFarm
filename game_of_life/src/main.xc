@@ -28,11 +28,10 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 
 #define MIN_CELLS_FOR_TILE1    64*64
 
-#define MAXLINEBYTES 250
-#define CHUNK0       80*1024 //92
-#define CHUNK1       80*1024 //112
+#define MAXLINEBYTES 235
+#define CHUNK0       700*MAXLINEBYTES//790
+#define CHUNK1       900*MAXLINEBYTES//1040
 
-#define PERWORKERMEMORYINTILE0 CHUNK0/NUMBEROFWORKERSINTILE0
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
 #define INPUT_FILE  "test.pgm"
@@ -232,12 +231,11 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
 void distributor(client inInterface toDataIn, server outInterface i_out, server accInterface fromAcc,
                  client ledControl toLeds, server d2w workers[n], unsigned n, client d2d slaveDist) {
   uchar data[CHUNK0];
+  uchar nextTopGhost[MAXLINEBYTES];
   uchar lineBuffer[MAXLINEBYTES];
   int height;
   int width;
   int mode = STEP_COMPLETED_MODE;
-  int linesPerWorker;
-  int extraLines;
   int nextLineToBeAllocated;
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
@@ -247,12 +245,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 
   timer tmr;
   float duration = 0;
+  float durationForTests = 0;
+  long roundsInTests = 0;
   long time;
 
-  uchar workersInTile0_best;
-  uchar workersInTile0;
-  uchar workersInTile1_best;
-  uchar workersInTile1;
+  uchar workersInTile0 = 1;
+  uchar workersInTile0_best = 1;
+  uchar workersInTile1 = 1;
+  uchar workersInTile1_best = 1;
+  uchar maxWorkersTile0 = NUMBEROFWORKERSINTILE0;
+  uchar maxWorkersTile1 = NUMBEROFWORKERSINTILE1;
   float maxSpeedAchieved = 99999;
   int roundsProcessedWithThisSetup = -1;
   float lastDuration = 0;
@@ -273,7 +275,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   //change the image according to the "Game of Life"
   {height,width} = toDataIn.initialize_transaction();
   printf("Image size = %dx%d\n", height, width );
-  if((height<10 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
+  if((height<12 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
     rotate = 1;
     printf("**************WARNING**************\n");
     printf("The system has detected that the image provided has to be\n");
@@ -285,34 +287,27 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
     width = temp;
   }
 
-  int testRounds = keepWithinBounds(3000000/(width * height),5,2000);
+  int testRounds = keepWithinBounds(3000000/(width * height),5,50);
   if((height*width)>=MIN_CELLS_FOR_TILE1 || useTile1){
     useTile1 = 1;
-    availableWorkers += NUMBEROFWORKERSINTILE1;
   }
 
-  float ratio = 7.0;
+  if(height<12){
+    if(useTile1)
+      maxWorkersTile0 = keepWithinBounds(height/2,1,NUMBEROFWORKERSINTILE0);
+    else
+      maxWorkersTile0 = height;
+    maxWorkersTile1 = height - maxWorkersTile0;
+  }
+  availableWorkers = maxWorkersTile0 + maxWorkersTile1;
+
+  float ratio = ((float)maxWorkersTile1)/availableWorkers;
   do{
     if(useTile1)
-      linesForD2 = (int) (ratio*(height / 12));
+      linesForD2 = (int) (ratio*height);
     linesForD1 = height - linesForD2;
-    ratio = ratio - 0.1;
-  } while (lines2bytes(linesForD2+2,width)>CHUNK1 && ratio>=6.0);
-
-  workersInTile0 = calculateMinimumCores(PERWORKERMEMORYINTILE0, linesForD1, width);
-  workersInTile1 = calculateMinimumCores(PERWORKERMEMORYINTILE1, linesForD2, width);
-  if(workersInTile1>workersInTile0)
-    workersInTile0 = workersInTile1;
-  else
-    workersInTile1 = workersInTile0;
-  if(workersInTile0>NUMBEROFWORKERSINTILE0)
-    workersInTile0=NUMBEROFWORKERSINTILE0;
-  if(workersInTile1>NUMBEROFWORKERSINTILE1)
-    workersInTile1=NUMBEROFWORKERSINTILE1;
-  slaveDist.set_workers_to(workersInTile1);
-  workersInTile0_best = workersInTile0;
-  workersInTile1_best = workersInTile1;
-
+    ratio = ratio - 0.01;
+  } while (lines2bytes(linesForD2,width)>CHUNK1 && ratio>((float)CHUNK1)/(CHUNK0+CHUNK1));
   select{
     case toDataIn.user_input_received():
       for( int y = 1; y <= height; y++ ) {
@@ -320,7 +315,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           if(y<=linesForD2)
             j = y;
           else
-            j = y-linesForD2;
+            j = y - linesForD2;
           toDataIn.request_line(data, j, width, rotate);
           //STARTLINE FOR TILE 0 = linesForD2
           if(y==linesForD2)
@@ -339,8 +334,8 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   }
 
   printf("Processing...\n");
-//  printf("Adjusting number of workers for highest possible speed...\n");
-//  printf("Pausing and Output requests are temporarily disabled...\n");
+  printf("Adjusting number of workers for highest possible speed...\n");
+  printf("Pausing and Output requests are temporarily disabled...\n");
 
   tmr :> time;
   while(1) {
@@ -370,7 +365,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         toLeds.send_command(RED_LED_ON);
         if(useTile1)
           aliveCellsThisStep = aliveCellsThisStep + slaveDist.get_stats();
-        printReport(round,duration,aliveCellsThisStep, width*height);
+        printReport(round,duration,aliveCellsThisStep, width*height, roundsInTests, durationForTests);
         select {
           case fromAcc.unpause():
             pauseRequested = 0;
@@ -379,9 +374,9 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
             break;
         }
       }
-      linesPerWorker = linesForD1 / workersInTile0;
-      extraLines     = linesForD1 % workersInTile0;
+
       nextLineToBeAllocated = 1;
+      memcpy(nextTopGhost, data, lines2bytes(1,width));
       linesUpdated = 0;
       aliveCellsThisStep = 0;
       round++;
@@ -393,6 +388,8 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 
       roundsProcessedWithThisSetup++;
       if(roundsProcessedWithThisSetup==testRounds && !bestFound){
+        roundsInTests+=testRounds;
+        durationForTests = duration;
         float durationWithThisSetup = (duration-lastDuration);
         if(durationWithThisSetup <= maxSpeedAchieved){
           maxSpeedAchieved = durationWithThisSetup;
@@ -411,18 +408,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           printf("Pausing and Output requests are now enabled...\n");
           fflush(stdout);
         }else{
-          //************* REIMPLEMENT THIS PART***************
-          if((workersInTile0<NUMBEROFWORKERSINTILE0) && (workersInTile0<=workersInTile1))
+          if(workersInTile1>maxWorkersTile0 && workersInTile1!=maxWorkersTile1){
+            workersInTile1++;
+            slaveDist.set_workers_to(workersInTile1);
+          }
+          if(workersInTile1==workersInTile0 && workersInTile1!=maxWorkersTile1){
+            workersInTile1++;
+            slaveDist.set_workers_to(workersInTile1);
+          }
+          if(workersInTile0<workersInTile1 && workersInTile0!=maxWorkersTile0)
             workersInTile0++;
-          if(workersInTile0-workersInTile1>=1){
-            workersInTile1++;
-            slaveDist.set_workers_to(workersInTile1);
-          }
-          else if((workersInTile0==NUMBEROFWORKERSINTILE0)&&(workersInTile1<NUMBEROFWORKERSINTILE1)){
-            workersInTile1++;
-            slaveDist.set_workers_to(workersInTile1);
-          }
-          //**************************************************
         }
         tmr :> time;
       }
@@ -434,15 +429,25 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           time += 50000000;
           duration += 0.5;
           break;
+      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uchar rotateEnable}:
+          outheight = height;
+          outwidth = width;
+          rotateEnable = rotate;
+          outputRequested = 1;
+          break;
+      case bestFound => fromAcc.pause():
+          pauseRequested = 1;
+          break;
       case workers[int j].get_data(uchar part[])
           -> {int start_line, int lines_sent, int totalCols, uchar speedBoost}:
           speedBoost = bestFound;
           start_line = nextLineToBeAllocated;
-          lines_sent = linesPerWorker + (extraLines>0?1:0);
-          extraLines--;
+          lines_sent = 1;
           nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
-          memcpy(part,data+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
+          memcpy(part, nextTopGhost, lines2bytes(1,width));
+          memcpy(part + lines2bytes(1,width), data+lines2bytes(start_line,width),lines2bytes(lines_sent+1,width));
+          memcpy(nextTopGhost, data+lines2bytes(nextLineToBeAllocated-1,width),lines2bytes(1,width)); //update nextTopGhost
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
@@ -462,15 +467,9 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
             }
             mode = STEP_COMPLETED_MODE;
           }
-          break;
-      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uchar rotateEnable}:
-          outheight = height;
-          outwidth = width;
-          rotateEnable = rotate;
-          outputRequested = 1;
-          break;
-      case bestFound => fromAcc.pause():
-          pauseRequested = 1;
+          else if(nextLineToBeAllocated <= linesForD1){
+            workers[j].data_ready();
+          }
           break;
     }
   }
@@ -478,10 +477,9 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 
 void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned n) {
   uchar half[CHUNK1];
+  uchar nextTopGhost[MAXLINEBYTES];
   int linesReceived, height, width;
 
-  int linesPerWorker;
-  int extraLines;
   int nextLineToBeAllocated;
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
@@ -514,8 +512,7 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
             workers[i].data_ready();
           }
           nextLineToBeAllocated = 1;
-          linesPerWorker = linesReceived / currentWorkers;
-          extraLines = linesReceived % currentWorkers;
+          memcpy(nextTopGhost, half, lines2bytes(1,width));
           linesUpdated = 0;
           aliveCellsThisStep = 0;
           break;
@@ -529,11 +526,12 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
           -> {int start_line, int lines_sent, int totalCols, uchar sb}:
           sb = speedBoost;
           start_line = nextLineToBeAllocated;
-          lines_sent = linesPerWorker + (extraLines>0?1:0);
-          extraLines--;
+          lines_sent = 1;
           nextLineToBeAllocated = start_line + lines_sent;
           totalCols = width;
-          memcpy(part,half+lines2bytes(start_line-1,width),lines2bytes(lines_sent+2,width));
+          memcpy(part, nextTopGhost, lines2bytes(1,width));
+          memcpy(part + lines2bytes(1,width), half+lines2bytes(start_line,width),lines2bytes(lines_sent+1,width));
+          memcpy(nextTopGhost, half+lines2bytes(nextLineToBeAllocated-1,width),lines2bytes(1,width)); //update nextTopGhost
           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(half+lines2bytes(linenumber,width), line, lines2bytes(1,width));
@@ -541,20 +539,21 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
           aliveCellsThisStep += aliveCells;
           if(linesUpdated==linesReceived)
             masterDist.step_completed();
+          else if(nextLineToBeAllocated<=linesReceived)
+            workers[j].data_ready();
           break;
     }
   }
 }
 
-void worker(int id, client d2w distributor, static const int WORKERMEMORY){
-  uchar part[WORKERMEMORY];
+void worker(int id, client d2w distributor){
+  uchar part[MAXLINEBYTES*3];
   uchar line[MAXLINEBYTES];
   int startLine = 0;
   int linesReceived = 0;
   int totalCols = 0;
   uchar speedBoost = 0;
   while(1){
-    speedBoost = 0;
     select {
       case distributor.data_ready():
         {startLine,linesReceived,totalCols,speedBoost} = distributor.get_data(part);
@@ -724,12 +723,12 @@ int main(void) {
     on tile[0]:DataOutStream(i_out, i_ledControl[1], i_buttonRequests[1]);       //thread to write out a PGM image
     on tile[0]:distributor(i_in, i_out, i_acc, i_ledControl[2], i_d2w, NUMBEROFWORKERSINTILE0, master2slave);//thread to coordinate work on image
     par(int i=0 ; i<NUMBEROFWORKERSINTILE0 ; i++){
-      on tile[0]:worker(i, i_d2w[i],PERWORKERMEMORYINTILE0);
+      on tile[0]:worker(i, i_d2w[i]);
     }
 
     on tile[1]:distributor_tile_one(master2slave, i_d2w_tile_one, NUMBEROFWORKERSINTILE1);
     par(int i=0 ; i<NUMBEROFWORKERSINTILE1 ; i++){
-      on tile[1]:worker(i+NUMBEROFWORKERSINTILE0, i_d2w_tile_one[i],PERWORKERMEMORYINTILE1);
+      on tile[1]:worker(i+NUMBEROFWORKERSINTILE0, i_d2w_tile_one[i]);
     }
 
   }

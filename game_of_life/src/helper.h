@@ -71,27 +71,14 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
   return res - itself;
 }
 
-uchar calculateMinimumCores(unsigned int memoryPerWorker, unsigned int lines, unsigned int width){
-  if(lines == 0)
-    return 0;
-  uchar n = 0;
-  unsigned int linesPerWorker;
-  unsigned int extraLines;
-  do {
-      n++;
-      linesPerWorker = lines / n;
-      extraLines     = lines % n;
-  } while(lines2bytes(2+linesPerWorker+(extraLines>0?1:0),width)>memoryPerWorker);
-//  printf("Minimum possible cores: %d\n", n);
-  return n;
-}
-
-void printReport(long round, float duration, int aliveCells, int totalCells){
+void printReport(long round, float duration, int aliveCells, int totalCells, long roundCorrection, float durationCorrection){
   unsigned int minutes;
   unsigned int seconds;
   minutes = (int)duration / 60;
   seconds = (int)duration % 60;
-  double roundsPerSecond = ((double)round) / duration;
+  if(duration == durationCorrection)
+    durationCorrection -= 0.5;
+  double roundsPerSecond = ((double)round-roundCorrection) / (duration-durationCorrection);
   unsigned long cellsPerSecond = roundsPerSecond * totalCells;
   printf("----------------STATUS REPORT----------------\n");
   printf("| Rounds processed: %-24u|\n",round);
