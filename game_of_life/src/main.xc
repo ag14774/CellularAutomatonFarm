@@ -29,12 +29,12 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define MIN_CELLS_FOR_TILE1    64*64
 
 #define MAXLINEBYTES 235
-#define CHUNK0       700*MAXLINEBYTES//790
-#define CHUNK1       900*MAXLINEBYTES//1040
+#define CHUNK0       790*MAXLINEBYTES//790
+#define CHUNK1       1040*MAXLINEBYTES//1040
 
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
-#define INPUT_FILE  "test.pgm"
+#define INPUT_FILE  "test.rle"
 #define OUTPUT_FILE "testout.pgm"
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
@@ -86,18 +86,18 @@ typedef interface outInterface {
   void request_line(uchar line[],int linenumber);
 
   [[guarded]]
-  {int,int,uchar} initialize_transaction();
+  {int,int,uchar} initialize_transfer();
 
   [[notification]]
   slave void data_ready(void);
 
   [[clears_notification]]
   [[guarded]]
-  void end_transaction();
+  void end_transfer();
 } outInterface;
 
 typedef interface inInterface {
-  {int,int} initialize_transaction();
+  {int,int,uchar} initialize_transfer();
 
   [[notification]]
   slave void user_input_received(void);
@@ -105,7 +105,7 @@ typedef interface inInterface {
   void request_line(uchar data[], int linenumber, int width, uchar rotate);
 
   [[clears_notification]]
-  void end_transaction();
+  void end_transfer();
 } inInterface;
 
 typedef interface accInterface {
@@ -179,12 +179,21 @@ void buttonListener(in port b, server buttonRequest clients[n], unsigned n) {
 [[distributable]]
 void DataInStream(server inInterface fromDistributor, client ledControl toLeds, client buttonRequest fromButtons){
   char infname[] = INPUT_FILE;     //put your input image path here
+  uchar rle=0;
+  char *point;
+  if((point = strrchr(infname,'.')) != NULL ) {
+    if(strcmp(point,".rle") == 0) {
+      rle = 1;
+    }
+  }
   int res;
   uchar line[MAXLINEBYTES];
+  int storeForLater = 0;
+  int count = 0;
 
   while(1){
     select{
-      case fromDistributor.initialize_transaction() -> {int height, int width}:
+      case fromDistributor.initialize_transfer() -> {int height, int width, uchar _rle}:
         fromButtons.requestUserInput(1);
         printf( "DataInStream: Start...\n" );
         //Open PGM file
@@ -195,24 +204,67 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         }
         height = _getheight();
         width  = _getwidth();
+        _rle = rle;
         fromDistributor.user_input_received();
         toLeds.send_command(GREEN_LED_ON);
         break;
       case fromDistributor.request_line(uchar data[], int linenumber, int width, uchar rotate):
         //Read image byte-by-byte and copy line to distributor
+        int pointer = 0;
+        if(storeForLater>0)
+          storeForLater--;
         if(rotate)
           _disable_buffering();
         for(int y=0;y<width;y++){
-          uchar byte;
+          uchar byte = 0;
           if(rotate)
             byte = _readinbyte_vert();
-          else
-            byte = _readinbyte();
-          changeBit(line, 0, y, byte, width);
+          else{
+            if(storeForLater<=0) {
+              byte = _readinbyte();
+              if(rle && byte!='\n' && byte!='\r'){
+                if(byte!='b' && byte!='o' && byte!='$' && byte!='!'){
+                  count = count * 10 + (byte - '0');
+                }
+                if(byte=='b'){
+                  if(count==0)
+                    count = 1;
+                  for(int l=0;l<count;l++){
+                    changeBit(line, 0, pointer, 0, width);
+                    pointer++;
+                  }
+                  count = 0;
+                  if(pointer==width)
+                    break;
+                }
+                if(byte=='o'){
+                  if(count==0)
+                    count = 1;
+                  for(int l=0;l<count;l++){
+                    changeBit(line, 0, pointer, 1, width);
+                    pointer++;
+                  }
+                  count = 0;
+                  if(pointer==width)
+                    break;
+                }
+                if(byte=='$'){
+                  storeForLater = count;
+                  for(int l=0;l<(width-pointer);l++){
+                    changeBit(line, 0, pointer+l, 0, width);
+                  }
+                  count = 0;
+                  break;
+                }
+              }
+            }
+          }
+          if(!rle || storeForLater>0)
+            changeBit(line, 0, y, byte, width);
         }
         memcpy(data+lines2bytes(linenumber,width),line,lines2bytes(1,width));
         break;
-      case fromDistributor.end_transaction():
+      case fromDistributor.end_transfer():
         //Close PGM image file
         _closeinpgm();
         toLeds.send_command(GREEN_LED_OFF);
@@ -245,9 +297,11 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 
   timer tmr;
   float duration = 0;
-  float durationForTests = 0;
-  long roundsInTests = 0;
   long time;
+
+  unsigned int last100RoundsDuration = 0;
+  uchar consecutiveRounds = 0;
+  unsigned int lastPolledTime = 0;
 
   uchar workersInTile0 = 1;
   uchar workersInTile0_best = 1;
@@ -273,9 +327,10 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   //Read in and do something with your image values..
   //This just inverts every pixel, but you should
   //change the image according to the "Game of Life"
-  {height,width} = toDataIn.initialize_transaction();
+  uchar rle = 0;
+  {height,width,rle} = toDataIn.initialize_transfer();
   printf("Image size = %dx%d\n", height, width );
-  if((height<12 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES){
+  if(!rle && ( (height<12 && width>height) || lines2bytes(1,width)>=MAXLINEBYTES ) ){
     rotate = 1;
     printf("**************WARNING**************\n");
     printf("The system has detected that the image provided has to be\n");
@@ -287,7 +342,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
     width = temp;
   }
 
-  int testRounds = keepWithinBounds(3000000/(width * height),5,50);
+  int testRounds = keepWithinBounds(3000000/(width * height),5,1000);
   if((height*width)>=MIN_CELLS_FOR_TILE1 || useTile1){
     useTile1 = 1;
   }
@@ -321,7 +376,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           if(y==linesForD2)
             slaveDist.get_data(data, linesForD2, width, height);
       }
-      toDataIn.end_transaction();
+      toDataIn.end_transfer();
       break;
   }
 
@@ -341,7 +396,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   while(1) {
     if(mode == STEP_COMPLETED_MODE){
       toLeds.send_command(TOGGLE_SEP_GREEN);
+      if(consecutiveRounds == 0)
+        tmr :> lastPolledTime;
+      if(consecutiveRounds == 100){
+        last100RoundsDuration = lastPolledTime;
+        tmr :> lastPolledTime;
+        last100RoundsDuration = lastPolledTime - last100RoundsDuration;
+        consecutiveRounds = -1;
+      }
       if(outputRequested){
+        consecutiveRounds = -1;
         i_out.data_ready();
         while(outputRequested){
           select{
@@ -354,7 +418,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
                   memcpy(line,data+lines2bytes(linenumber-linesForD2+1,width),lines2bytes(1,width));
                 }
                 break;
-            case i_out.end_transaction():
+            case i_out.end_transfer():
                 tmr :> time;
                 outputRequested = 0;
                 break;
@@ -363,9 +427,10 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       }
       if (pauseRequested){
         toLeds.send_command(RED_LED_ON);
+        consecutiveRounds = -1;
         if(useTile1)
           aliveCellsThisStep = aliveCellsThisStep + slaveDist.get_stats();
-        printReport(round,duration,aliveCellsThisStep, width*height, roundsInTests, durationForTests);
+        printReport(round,duration,aliveCellsThisStep, width*height, last100RoundsDuration);
         select {
           case fromAcc.unpause():
             pauseRequested = 0;
@@ -386,10 +451,9 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
         workers[i].data_ready();
       }
 
+      consecutiveRounds++;
       roundsProcessedWithThisSetup++;
       if(roundsProcessedWithThisSetup==testRounds && !bestFound){
-        roundsInTests+=testRounds;
-        durationForTests = duration;
         float durationWithThisSetup = (duration-lastDuration);
         if(durationWithThisSetup <= maxSpeedAchieved){
           maxSpeedAchieved = durationWithThisSetup;
@@ -423,13 +487,12 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       }
       mode = NEW_STEP_MODE;
     }
-    [[ordered]]
     select {
       case tmr when timerafter(time) :> void:
           time += 50000000;
           duration += 0.5;
           break;
-      case bestFound => i_out.initialize_transaction() -> {int outheight, int outwidth, uchar rotateEnable}:
+      case bestFound => i_out.initialize_transfer() -> {int outheight, int outwidth, uchar rotateEnable}:
           outheight = height;
           outwidth = width;
           rotateEnable = rotate;
@@ -439,16 +502,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           pauseRequested = 1;
           break;
       case workers[int j].get_data(uchar part[])
-          -> {int start_line, int lines_sent, int totalCols, uchar speedBoost}:
-          speedBoost = bestFound;
-          start_line = nextLineToBeAllocated;
-          lines_sent = 1;
-          nextLineToBeAllocated = start_line + lines_sent;
-          totalCols = width;
-          memcpy(part, nextTopGhost, lines2bytes(1,width));
-          memcpy(part + lines2bytes(1,width), data+lines2bytes(start_line,width),lines2bytes(lines_sent+1,width));
-          memcpy(nextTopGhost, data+lines2bytes(nextLineToBeAllocated-1,width),lines2bytes(1,width)); //update nextTopGhost
-          break;
+           -> {int start_line, int lines_sent, int totalCols, uchar speedBoost}:
+           speedBoost = bestFound;
+           start_line = nextLineToBeAllocated;
+           lines_sent = 1;
+           nextLineToBeAllocated = start_line + lines_sent;
+           totalCols = width;
+           memcpy(part, nextTopGhost, lines2bytes(1,width));
+           memcpy(part + lines2bytes(1,width), data+lines2bytes(start_line,width),lines2bytes(lines_sent+1,width));
+           memcpy(nextTopGhost, data+lines2bytes(nextLineToBeAllocated-1,width),lines2bytes(1,width)); //update nextTopGhost
+           break;
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(data+lines2bytes(linenumber,width), line, lines2bytes(1,width));
           linesUpdated++;
@@ -617,7 +680,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
 
   while(1){
     int pressed = toButtons.requestUserInput(2);
-    {height,width,rotate} = fromDistributor.initialize_transaction();
+    {height,width,rotate} = fromDistributor.initialize_transfer();
     printf( "DataOutStream:Start...\n" );
     select {
       case fromDistributor.data_ready():
@@ -641,7 +704,7 @@ void DataOutStream(client outInterface fromDistributor, client ledControl toLeds
             }
           }
           _closeoutpgm();
-          fromDistributor.end_transaction();
+          fromDistributor.end_transfer();
           toLeds.send_command(BLUE_LED_OFF);
         }
         break;

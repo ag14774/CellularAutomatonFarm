@@ -71,20 +71,24 @@ int countAliveNeighbours(uchar A[], int r, int c, int width){
   return res - itself;
 }
 
-void printReport(long round, float duration, int aliveCells, int totalCells, long roundCorrection, float durationCorrection){
+void printReport(long round, float duration, int aliveCells, int totalCells, int last100RoundsDuration){
   unsigned int minutes;
   unsigned int seconds;
+  unsigned long cellsPerSecond;
   minutes = (int)duration / 60;
   seconds = (int)duration % 60;
-  if(duration == durationCorrection)
-    durationCorrection -= 0.5;
-  double roundsPerSecond = ((double)round-roundCorrection) / (duration-durationCorrection);
-  unsigned long cellsPerSecond = roundsPerSecond * totalCells;
+  double last100DurationInSeconds = last100RoundsDuration/100000000.0f;
+  if(last100DurationInSeconds!=0){
+    double roundsPerSecond = 100.0 / last100DurationInSeconds;
+    cellsPerSecond = roundsPerSecond * totalCells;
+  } else {
+    cellsPerSecond = 0;
+  }
   printf("----------------STATUS REPORT----------------\n");
-  printf("| Rounds processed: %-24u|\n",round);
-  printf("| Processing time : %02dm %02ds%18|\n", minutes, seconds);
-  printf("| # of alive cells: %-24u|\n",aliveCells);
-  printf("| Processing speed: %010u cells/sec%5|\n",cellsPerSecond);
+  printf("| Rounds processed : %-24u|\n",round);
+  printf("| Processing time  : %02dm %02ds%18|\n", minutes, seconds);
+  printf("| # of alive cells : %-24u|\n",aliveCells);
+  printf("| Processing speed : %010u cells/sec%5|\n",cellsPerSecond);
   printf("---------------------------------------------\n");
 }
 
