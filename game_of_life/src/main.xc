@@ -28,13 +28,13 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 
 #define MIN_CELLS_FOR_TILE1    64*64
 
-#define MAXLINEBYTES 200//235
+#define MAXLINEBYTES 235//235
 #define CHUNK0       790*MAXLINEBYTES//790
 #define CHUNK1       1040*MAXLINEBYTES//1040
 
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
-#define INPUT_FILE  "16x16.pgm"
+#define INPUT_FILE  "tilo.rle"
 #define OUTPUT_FILE "testout.pgm"
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
@@ -190,8 +190,6 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
   uchar line[MAXLINEBYTES];
   int storeForLater = 0;
   int count = 0;
-  timer tmr;
-  unsigned long duration;
 
   while(1){
     select{
@@ -209,7 +207,6 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         _rle = rle;
         fromDistributor.user_input_received();
         toLeds.send_command(GREEN_LED_ON);
-        tmr :> duration;
         break;
       case fromDistributor.request_line(uchar data[], int linenumber, int width, uchar rotate):
         //Read image byte-by-byte and copy line to distributor
@@ -271,10 +268,6 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
         //Close PGM image file
         _closeinpgm();
         toLeds.send_command(GREEN_LED_OFF);
-        unsigned long temp;
-        tmr :> temp;
-        duration = temp - duration;
-        printf("Duration: %f",duration/100000.0f);
         break;
   }
  }
@@ -296,6 +289,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   int width;
   int mode = STEP_COMPLETED_MODE;
   int nextLineToBeAllocated;
+  int nextLineToBeAllocatedTemp;
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
   long round = 0;
@@ -310,16 +304,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   uchar consecutiveRounds = 0;
   unsigned int lastPolledTime = 0;
 
-  uchar workersInTile0 = 4;
-  uchar workersInTile0_best = 4;
-  uchar workersInTile1 = 1;
-  uchar workersInTile1_best = 1;
+  uchar workersInTile0 = 1;
+  uchar workersInTile0_best = 1;
+  uchar workersInTile1 = 0;
+  uchar workersInTile1_best = 0;
   uchar maxWorkersTile0 = NUMBEROFWORKERSINTILE0;
   uchar maxWorkersTile1 = NUMBEROFWORKERSINTILE1;
   float maxSpeedAchieved = 99999;
   int roundsProcessedWithThisSetup = -1;
   float lastDuration = 0;
-  uchar bestFound = 1;
+  uchar bestFound = 0;
 
   uchar rotate = 0;
 
@@ -350,16 +344,15 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   }
 
   int testRounds = keepWithinBounds(3000000/(width * height),5,1000);
-  if((height*width)>=MIN_CELLS_FOR_TILE1 || useTile1){
+  if((height*width)>=MIN_CELLS_FOR_TILE1){
     useTile1 = 1;
   }
-  useTile1 = 0;
 
   if(useTile1){
     maxWorkersTile0 = keepWithinBounds(height/2,1,NUMBEROFWORKERSINTILE0);
     maxWorkersTile1 = keepWithinBounds(height - maxWorkersTile0,1,NUMBEROFWORKERSINTILE1);
-    workersInTile1 = 7;
-    workersInTile1_best = 7;
+    workersInTile1 = 1;
+    workersInTile1_best = 1;
   }
   else {
     maxWorkersTile0 = keepWithinBounds(height,1,NUMBEROFWORKERSINTILE0);
@@ -369,18 +362,16 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   availableWorkers = maxWorkersTile0 + maxWorkersTile1;
 
   float ratio = ((float)maxWorkersTile1)/availableWorkers;
-  if(ratio==0){
+  if(ratio==0)
     useTile1 = 0;
-    printf("test\n");
-  }
+
   do{
     if(useTile1)
       linesForD2 = (int) (ratio*height);
     linesForD1 = height - linesForD2;
     ratio = ratio - 0.01;
   } while (lines2bytes(linesForD2,width)>CHUNK1 && ratio>((float)CHUNK1)/(CHUNK0+CHUNK1));
-  printf("%d\n",linesForD1);
-  printf("%d\n",linesForD2);
+
   select{
     case toDataIn.user_input_received():
       for( int y = 1; y <= height; y++ ) {
@@ -459,6 +450,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       }
 
       nextLineToBeAllocated = 1;
+      nextLineToBeAllocatedTemp = workersInTile0+1;
       memcpy(nextTopGhost, data, lines2bytes(1,width));
       linesUpdated = 0;
       aliveCellsThisStep = 0;
@@ -505,7 +497,6 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
       }
       mode = NEW_STEP_MODE;
     }
-    [[ordered]]
     select {
       case tmr when timerafter(time) :> void:
           time += 50000000;
@@ -519,7 +510,6 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
           break;
       case bestFound => fromAcc.pause():
           pauseRequested = 1;
-          printf("pause requested\n");
           break;
       case workers[int j].get_data(uchar part[])
            -> {int start_line, int lines_sent, int totalCols, uchar speedBoost}:
@@ -550,7 +540,8 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
             }
             mode = STEP_COMPLETED_MODE;
           }
-          else if(nextLineToBeAllocated <= linesForD1){
+          else if(nextLineToBeAllocatedTemp <= linesForD1){
+            nextLineToBeAllocatedTemp = nextLineToBeAllocatedTemp + 1;
             workers[j].data_ready();
           }
           break;
@@ -564,6 +555,7 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
   int linesReceived, height, width;
 
   int nextLineToBeAllocated;
+  int nextLineToBeAllocatedTemp;
   int linesUpdated = 0;
   long aliveCellsThisStep = 0;
   uchar speedBoost = 0;
@@ -595,6 +587,7 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
             workers[i].data_ready();
           }
           nextLineToBeAllocated = 1;
+          nextLineToBeAllocatedTemp = currentWorkers+1;
           memcpy(nextTopGhost, half, lines2bytes(1,width));
           linesUpdated = 0;
           aliveCellsThisStep = 0;
@@ -619,11 +612,14 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(half+lines2bytes(linenumber,width), line, lines2bytes(1,width));
           linesUpdated++;
+//          printf("%d: %d\n",j,linenumber);
           aliveCellsThisStep += aliveCells;
           if(linesUpdated==linesReceived)
             masterDist.step_completed();
-          else if(nextLineToBeAllocated<=linesReceived)
+          else if(nextLineToBeAllocatedTemp<=linesReceived){
             workers[j].data_ready();
+            nextLineToBeAllocatedTemp = nextLineToBeAllocatedTemp + 1;
+          }
           break;
     }
   }

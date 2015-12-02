@@ -38,6 +38,12 @@ int keepWithinBounds(int num, int low, int high){
   return num;
 }
 
+int max(int a, int b){
+  if(a>b)
+    return a;
+  return b;
+}
+
 uchar decide(int aliveNeighbours, uchar itselfAlive){
   if(aliveNeighbours<2)
     return 0;
