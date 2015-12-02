@@ -28,13 +28,16 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 
 #define MIN_CELLS_FOR_TILE1    64*64
 
-#define MAXLINEBYTES 235//235
-#define CHUNK0       790*MAXLINEBYTES//790
-#define CHUNK1       1040*MAXLINEBYTES//1040
+#define MAXLINEBYTES  233//230
+#define TILE0LINESMAX 790
+#define TILE1LINESMAX 1040
+#define CHUNK0        TILE0LINESMAX*MAXLINEBYTES//790
+#define CHUNK1        TILE1LINESMAX*MAXLINEBYTES//1040
+//MAX: 1830x1864
 
 #define PERWORKERMEMORYINTILE1 CHUNK1/NUMBEROFWORKERSINTILE1
 
-#define INPUT_FILE  "tilo.rle"
+#define INPUT_FILE  "huge.rle"
 #define OUTPUT_FILE "testout.pgm"
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
@@ -215,7 +218,7 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
           storeForLater--;
         if(rotate)
           _disable_buffering();
-        for(int y=0;y<width;y++){
+        for(int y=0;y<width||(rle && storeForLater<=0);y++){
           uchar byte = 0;
           if(rotate)
             byte = _readinbyte_vert();
@@ -226,6 +229,8 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
                 if(byte!='b' && byte!='o' && byte!='$' && byte!='!'){
                   count = count * 10 + (byte - '0');
                 }
+                if(byte=='!')
+                  break;
                 if(byte=='b'){
                   if(count==0)
                     count = 1;
@@ -234,8 +239,6 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
                     pointer++;
                   }
                   count = 0;
-                  if(pointer==width)
-                    break;
                 }
                 if(byte=='o'){
                   if(count==0)
@@ -245,8 +248,6 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
                     pointer++;
                   }
                   count = 0;
-                  if(pointer==width)
-                    break;
                 }
                 if(byte=='$'){
                   storeForLater = count;
@@ -254,6 +255,7 @@ void DataInStream(server inInterface fromDistributor, client ledControl toLeds, 
                     changeBit(line, 0, pointer+l, 0, width);
                   }
                   count = 0;
+                  pointer = 0;
                   break;
                 }
               }
@@ -350,13 +352,17 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 
   if(useTile1){
     maxWorkersTile0 = keepWithinBounds(height/2,1,NUMBEROFWORKERSINTILE0);
-    maxWorkersTile1 = keepWithinBounds(height - maxWorkersTile0,1,NUMBEROFWORKERSINTILE1);
+    maxWorkersTile1 = keepWithinBounds(height - maxWorkersTile0,0,NUMBEROFWORKERSINTILE1);
     workersInTile1 = 1;
     workersInTile1_best = 1;
   }
   else {
     maxWorkersTile0 = keepWithinBounds(height,1,NUMBEROFWORKERSINTILE0);
     maxWorkersTile1 = 0;
+  }
+  if(maxWorkersTile1==0){
+    workersInTile1 = 0;
+    workersInTile1_best = 0;
   }
   slaveDist.set_workers_to(workersInTile1);
   availableWorkers = maxWorkersTile0 + maxWorkersTile1;
@@ -365,25 +371,28 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
   if(ratio==0)
     useTile1 = 0;
 
-  do{
+  if(useTile1)
+    linesForD2 = (int) (ratio*height);
+  linesForD1 = height - linesForD2;
+
+  while (lines2bytes(linesForD2+2,width)>CHUNK1){
     if(useTile1)
-      linesForD2 = (int) (ratio*height);
+      linesForD2--;
     linesForD1 = height - linesForD2;
-    ratio = ratio - 0.01;
-  } while (lines2bytes(linesForD2,width)>CHUNK1 && ratio>((float)CHUNK1)/(CHUNK0+CHUNK1));
+  }
 
   select{
     case toDataIn.user_input_received():
       for( int y = 1; y <= height; y++ ) {
           int j;
           if(y<=linesForD2)
-            j = y;
+            j = 1;
           else
             j = y - linesForD2;
           toDataIn.request_line(data, j, width, rotate);
           //STARTLINE FOR TILE 0 = linesForD2
-          if(y==linesForD2)
-            slaveDist.get_data(data, linesForD2, width, height);
+          if(y<=linesForD2 && j==1)
+            slaveDist.get_data(data, y, width, height);
       }
       toDataIn.end_transfer();
       break;
@@ -552,7 +561,7 @@ void distributor(client inInterface toDataIn, server outInterface i_out, server 
 void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned n) {
   uchar half[CHUNK1];
   uchar nextTopGhost[MAXLINEBYTES];
-  int linesReceived, height, width;
+  int linesReceived = 0, height, width;
 
   int nextLineToBeAllocated;
   int nextLineToBeAllocatedTemp;
@@ -567,11 +576,11 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
       case masterDist.set_workers_to(int numberOfWorkers):
           currentWorkers = numberOfWorkers;
           break;
-      case masterDist.get_data(uchar data[], int lines_sent, int totalCols, int totalRows):
-          linesReceived = lines_sent;
+      case masterDist.get_data(uchar data[], int where, int totalCols, int totalRows):
+          linesReceived++;
           width = totalCols;
           height = totalRows;
-          memcpy(half+lines2bytes(1,width), data+lines2bytes(1,width), lines2bytes(linesReceived,width));
+          memcpy(half+lines2bytes(where,width), data+lines2bytes(1,width), lines2bytes(1,width));
           masterDist.step_completed();
           break;
       case masterDist.exchange_ghosts(uchar data[]):
@@ -612,7 +621,6 @@ void distributor_tile_one(server d2d masterDist, server d2w workers[n], unsigned
       case workers[int j].send_line(uchar line[], int linenumber, int aliveCells):
           memcpy(half+lines2bytes(linenumber,width), line, lines2bytes(1,width));
           linesUpdated++;
-//          printf("%d: %d\n",j,linenumber);
           aliveCellsThisStep += aliveCells;
           if(linesUpdated==linesReceived)
             masterDist.step_completed();
@@ -632,10 +640,13 @@ void worker(int id, client d2w distributor){
   int linesReceived = 0;
   int totalCols = 0;
   uchar speedBoost = 0;
+  uchar neighbours;
+  uchar right = 255;
   while(1){
     select {
       case distributor.data_ready():
         {startLine,linesReceived,totalCols,speedBoost} = distributor.get_data(part);
+        right = 255;
         break;
     }
 
@@ -665,11 +676,13 @@ void worker(int id, client d2w distributor){
       for(int y=0; y<totalCols;y++){
         if(getBit(line,0,y,totalCols) || !speedBoost){
           uchar itself = getBit(part, x, y, totalCols);
-          int neighbours = countAliveNeighbours(part, x, y, totalCols);
+          {neighbours,right} = countAliveNeighbours(part, x, y, totalCols, right);
           uchar res = decide(neighbours, itself);
           aliveCells += (res?1:0);
           changeBit(line, 0, y, res, totalCols);
         }
+        else
+          right = 255;
       }
       distributor.send_line(line,startLine+x-1,aliveCells);
     }

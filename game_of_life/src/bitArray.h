@@ -12,19 +12,6 @@
 
 typedef unsigned char uchar;
 
-//int roundUpToChar(int HEIGHT, int WIDTH){
-//  size_t szc = sizeof(uchar)*8;
-//  int numOfBits = HEIGHT * WIDTH;
-//  return (numOfBits + szc -1) / szc ;
-//  //return ((n + szc - 1) / szc) * szc;
-//}
-
-/*
-void nullifyExtraBits(){
-
-}
-*/
-
 int mod(int a, int b){
   int result = a%b;
   if(result<0){
@@ -38,9 +25,6 @@ void setBit(uchar A[], int r, int c, int WIDTH){
   size_t bytesPerLine = (WIDTH + szc - 1) / szc;
   int realR = r*bytesPerLine + c/8;
   int realC = c%8;
-  if(c==0 && realC!=0){
-    debug_printf("ERROR IN DATA STRUCTURE!\n");
-  }
   A[realR] |= 1 << realC;
 }
 
@@ -49,9 +33,6 @@ void clearBit(uchar A[], int r, int c, int WIDTH){
   size_t bytesPerLine = (WIDTH + szc - 1) / szc;
   int realR = r*bytesPerLine + c/8;
   int realC = c%8;
-  if(c==0 && realC!=0){
-    debug_printf("ERROR IN DATA STRUCTURE!\n");
-  }
   A[realR] &= ~(1 << realC);
 }
 
@@ -68,9 +49,6 @@ uchar getBit(uchar A[], int r, int c, int WIDTH){
   size_t bytesPerLine = (WIDTH + szc - 1) / szc;
   int realR = r*bytesPerLine + c/8;
   int realC = c%8;
-  if(c==0 && realC!=0){
-    debug_printf("ERROR IN DATA STRUCTURE!\n");
-  }
   return (A[realR] >> realC) & 1;
 }
 

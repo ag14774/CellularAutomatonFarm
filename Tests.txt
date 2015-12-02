@@ -1,15 +1,4 @@
-﻿Functionality and design:
-use terms from lecture
-describe initial tests for most efficient cores
-describe best ratios performance-wise and memory-wise
-problems regarding reading and output lines(solved by reading/writing bytes) after bit extracted from array
-memory problems and bitArray.h(problem with memcpy requiring specified number of bytes, solved by starting from a "fresh" byte for each line)
-rle functionality
-
-Tests and Experiments:
--With vs without speedboost(include breeder and image that the system fails)(explain that images that exhibit infinite growth, slow the system down, because more of the cells need to be processed)
--Asynchronous channels vs interfaces
--With vs without tile 1(mention 4 cores in tile0 slower than 2+2)
--Different image ratios for tile 1
-//-rotate vs no rotate on small disproportional images
--Read with RLE vs with no RLE
+Notes:
+-Explain how 2 distributors is faster than having only one dsitributor. Bottleneck is the speed that the distributor can keep the workers busy
+-Remove different proportions for tile 1 test
+-Replace 4-cores blah blah test with speedboost vs no speedboost.

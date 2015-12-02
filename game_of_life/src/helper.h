@@ -38,8 +38,8 @@ int keepWithinBounds(int num, int low, int high){
   return num;
 }
 
-int max(int a, int b){
-  if(a>b)
+int min(int a, int b){
+  if(a<b)
     return a;
   return b;
 }
@@ -62,22 +62,47 @@ uchar getBitToroidal(uchar A[], int r, int c, int width){
   return getBit(A, r, c, width);
 }
 
-int countAliveNeighbours(uchar A[], int r, int c, int width){
-  int topLeftX = r - 1;
-  int topLeftY = c - 1;
-  int botRightX = r + 1;
-  int botRightY = c + 1;
-  int res = 0;
-  uchar itself = getBit(A, r, c, width);
-  for(int x = topLeftX ; x<=botRightX ; x++){
-    for(int y = topLeftY ; y<=botRightY ; y++){
-      res += getBitToroidal(A, x, y, width);
-    }
+{uchar,uchar} countAliveNeighbours(uchar A[], int r, int c, int width, uchar right){
+  uchar res = 0;
+  if(right != 255)
+    res = right;
+  uchar aliveRight = 0;
+  uchar alive = 0;
+
+  if(right==255){
+    alive = getBitToroidal(A, r-1, c-1, width);
+    res+=alive;
+    alive = getBitToroidal(A, r, c-1, width);
+    res+=alive;
+    alive = getBitToroidal(A, r+1, c-1, width);
+    res+=alive;
   }
-  return res - itself;
+
+  alive = getBitToroidal(A, r-1, c, width);
+  res+=alive;
+  aliveRight += alive;
+
+  alive = getBitToroidal(A, r, c, width);
+  aliveRight += alive;
+
+  alive = getBitToroidal(A, r+1, c, width);
+  res+=alive;
+  aliveRight += alive;
+
+  alive = getBitToroidal(A, r-1, c+1, width);
+  res+=alive;
+
+  alive = getBitToroidal(A, r, c+1, width);
+  res+=alive;
+
+  alive = getBitToroidal(A, r+1, c+1, width);
+  res+=alive;
+
+
+  return {res,aliveRight};
 }
 
-void printReport(long round, float duration, int aliveCells, int totalCells, int last100RoundsDuration){
+void printReport(long round, float duration, int aliveCells, int totalCells, unsigned int last100RoundsDuration){
   unsigned int minutes;
   unsigned int seconds;
   unsigned long cellsPerSecond;
