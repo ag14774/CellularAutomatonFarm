@@ -11,11 +11,13 @@
 #define STEP_COMPLETED_MODE  0xAA
 #define NEW_STEP_MODE        0xAB
 
+//****Bits in the 4-bit led pattern****
 #define NO_LED         0
 #define SEP_GREEN_LED  1
 #define BLUE_LED       2
 #define GREEN_LED      4
 #define RED_LED        8
+//*************************************
 
 #define SEP_GREEN_OFF    0xF0
 #define SEP_GREEN_ON     0xF1
@@ -38,12 +40,6 @@ int keepWithinBounds(int num, int low, int high){
   return num;
 }
 
-int min(int a, int b){
-  if(a<b)
-    return a;
-  return b;
-}
-
 uchar decide(int aliveNeighbours, uchar itselfAlive){
   if(aliveNeighbours<2)
     return 0;
@@ -62,14 +58,27 @@ uchar getBitToroidal(uchar A[], int r, int c, int width){
   return getBit(A, r, c, width);
 }
 
-{uchar,uchar} countAliveNeighbours(uchar A[], int r, int c, int width, uchar right){
+/**
+ * Computes a 3x3 block. Takes an array and the cell that is the centre of that block
+ * @param A Array that holds a line of the image
+ * @param r Row of the centre cell
+ * @param c Collumn of the centre cell
+ * @param width
+ * @param left Do we already know anything about the left collumn or should I compute it all over again?
+ * @return # of alive neighbours
+ *         Is the centre cell alive
+ *         Data that should be passed to the next cell to avoid recomputation
+ */
+{uchar,uchar,uchar} compute3x3block(uchar A[], int r, int c, int width, uchar left){
   uchar res = 0;
-  if(right != 255)
-    res = right;
+  if(left != 255)
+    res = left;
   uchar aliveRight = 0;
   uchar alive = 0;
+  uchar itself;
 
-  if(right==255){
+  //Only compute if results are not given by previous computation
+  if(left==255){
     alive = getBitToroidal(A, r-1, c-1, width);
     res+=alive;
     alive = getBitToroidal(A, r, c-1, width);
@@ -84,6 +93,7 @@ uchar getBitToroidal(uchar A[], int r, int c, int width){
 
   alive = getBitToroidal(A, r, c, width);
   aliveRight += alive;
+  itself = alive;
 
   alive = getBitToroidal(A, r+1, c, width);
   res+=alive;
@@ -99,7 +109,7 @@ uchar getBitToroidal(uchar A[], int r, int c, int width){
   res+=alive;
 
 
-  return {res,aliveRight};
+  return {res,aliveRight,itself};
 }
 
 void printReport(long round, float duration, int aliveCells, int totalCells, unsigned int last100RoundsDuration){

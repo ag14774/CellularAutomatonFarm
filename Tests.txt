@@ -1,4 +1,0 @@
-Notes:
--Explain how 2 distributors is faster than having only one dsitributor. Bottleneck is the speed that the distributor can keep the workers busy
--Remove different proportions for tile 1 test
--Replace 4-cores blah blah test with speedboost vs no speedboost.
