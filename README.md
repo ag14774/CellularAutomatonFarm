@@ -1,7 +1,15 @@
 # Cellular Automaton Farm
 
-This is for the assignment for weeks 3-4 (pair programming work, purely formative, 0%)
-xCore-200 Explorer Kit: Console Ant Defender Game
+"The task is to design and implement a small process
+farm on the xCore-200 Explorer board which simulates the ‘Game of
+Life’ on an image matrix. The board’s buttons, accelerometer, and
+LEDs should be used to control and visualise aspects of the game.
+The game matrix should be initialised from a PGM image file and the
+user should be able to export the game matrix as PGM image files.
+The solution should make efficient and effective use of the
+available parallel hardware of the architecture by implementing
+farming and communication of parts of the game matrix across
+several cores based on message passing."
 
 ## How to clone repository
 
