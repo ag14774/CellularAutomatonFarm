@@ -33,7 +33,7 @@ on tile[0] : port p_sda = XS1_PORT_1F;
 #define CHUNK1        TILE1LINESMAX*MAXLINEBYTES//1040
 
 //SET INPUT FILE HERE
-#define INPUT_FILE  "16x16.pgm"
+#define INPUT_FILE  "64x64.pgm"
 #define OUTPUT_FILE "testout.pgm"
 
 on tile[0] : in port buttons = XS1_PORT_4E; //port to access xCore-200 buttons
