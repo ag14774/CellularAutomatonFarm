@@ -20,11 +20,6 @@ several cores based on message passing."
 4. Open xTIMEComposer and check if project is found
 5. ???
 
-## How to contribute
-
-1. After a change is made, commit the change: git commit -am "This has been changed"
-2. Push change to master: git push origin master
-
 ## Added files
 
 Track newly added files using: git add <filename>
